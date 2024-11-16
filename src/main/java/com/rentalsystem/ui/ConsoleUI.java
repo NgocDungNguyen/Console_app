@@ -381,7 +381,7 @@ public class ConsoleUI {
 
     private String readUserInputAllowEmpty(String prompt) {
         System.out.print(prompt);
-        return reader.readLine().trim();
+        return reader.readLine();
     }
 
     private String readUserInputAllowEsc(String prompt) {
@@ -401,9 +401,14 @@ public class ConsoleUI {
             if (agreementId.equalsIgnoreCase("back")) {
                 return;
             }
-            if (rentalManager.getRentalAgreement(agreementId) != null) {
-                System.out.println(TableFormatter.ANSI_RED + "Agreement with ID " + agreementId + " already exists." + TableFormatter.ANSI_RESET);
-                agreementId = null;
+            try {
+                if (rentalManager.getRentalAgreement(agreementId) != null) {
+                    System.out.println(TableFormatter.ANSI_RED + "Agreement with ID " + agreementId + " already exists." + TableFormatter.ANSI_RESET);
+                    agreementId = null;
+                }
+            } catch (IllegalArgumentException e) {
+                // This is fine, it means the agreement doesn't exist yet
+                break;
             }
         }
 
@@ -477,8 +482,8 @@ public class ConsoleUI {
                     }
                 }
 
-                String rentAmountStr = readUserInput("Enter new rent amount (press enter to keep current): ");
-                if (!rentAmountStr.isEmpty()) {
+                String rentAmountStr = readUserInputAllowEmpty("Enter new rent amount (press enter to keep current): ");
+                if (!rentAmountStr.trim().isEmpty()) {
                     try {
                         double rentAmount = Double.parseDouble(rentAmountStr);
                         if (rentAmount < 0) {
