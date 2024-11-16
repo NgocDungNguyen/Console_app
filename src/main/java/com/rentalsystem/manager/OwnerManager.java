@@ -10,4 +10,5 @@ public interface OwnerManager {
     Owner getOwner(String ownerId);
     List<Owner> getAllOwners();
     List<Owner> searchOwners(String keyword);
+    boolean isEmailTaken(String email);
 }

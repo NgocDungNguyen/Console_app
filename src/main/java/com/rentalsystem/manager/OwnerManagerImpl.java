@@ -55,11 +55,6 @@ public class OwnerManagerImpl implements OwnerManager {
         saveOwners();
     }
 
-    private boolean isEmailTaken(String email) {
-        return owners.values().stream()
-                .anyMatch(owner -> owner.getContactInformation().equalsIgnoreCase(email));
-    }
-
     @Override
     public void deleteOwner(String ownerId) {
         if (!owners.containsKey(ownerId)) {
@@ -91,6 +86,12 @@ public class OwnerManagerImpl implements OwnerManager {
                         owner.getId().toLowerCase().contains(lowercaseKeyword) ||
                         owner.getContactInformation().toLowerCase().contains(lowercaseKeyword))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean isEmailTaken(String email) {
+        return owners.values().stream()
+                .anyMatch(owner -> owner.getContactInformation().equalsIgnoreCase(email));
     }
 
     private void saveOwners() {

@@ -40,17 +40,18 @@ import com.rentalsystem.util.FileHandler;
 import com.rentalsystem.util.InputValidator;
 
 public class ConsoleUI {
-    private final RentalManager rentalManager;
-    private final TenantManager tenantManager;
-    private final OwnerManager ownerManager;
-    private final HostManager hostManager;
-    private final PropertyManager propertyManager;
+    private RentalManager rentalManager;
+    private TenantManager tenantManager;
+    private OwnerManager ownerManager;
+    private HostManager hostManager;
+    private PropertyManager propertyManager;
     private final LineReader reader;
     private final Terminal terminal;
     private final TableFormatter tableFormatter;
 
     public static final String ANSI_GREEN = "\u001B[32m";
     public static final String ANSI_RESET = "\u001B[0m";
+
 
     private static final String[] RENTAL_ASCII = {
             "██████╗ ███████╗███╗   ██╗████████╗ █████╗ ██╗      ",
@@ -99,17 +100,10 @@ public class ConsoleUI {
     }
 
 
-    public ConsoleUI(RentalManager rentalManager, TenantManager tenantManager, OwnerManager ownerManager,
-                     HostManager hostManager, PropertyManager propertyManager) throws IOException {
-        this.rentalManager = rentalManager;
-        this.tenantManager = tenantManager;
-        this.ownerManager = ownerManager;
-        this.hostManager = hostManager;
-        this.propertyManager = propertyManager;
-
+    public ConsoleUI() throws IOException {
         terminal = TerminalBuilder.builder().system(true).build();
         List<Completer> completers = new ArrayList<>();
-        completers.add(new StringsCompleter("1", "2", "3", "4", "5", "6"));
+        completers.add(new StringsCompleter("1", "2", "3", "4", "5", "6", "7"));
         reader = LineReaderBuilder.builder()
                 .terminal(terminal)
                 .completer(new AggregateCompleter(completers))
@@ -118,12 +112,24 @@ public class ConsoleUI {
         tableFormatter = new TableFormatter(terminal);
     }
 
-    public void start() {
-        while (true) {
-            clearScreen();
-            printWelcomeMessage();
-            String command = showMainMenu();
+    private void initializeManagers() {
+        System.out.print("Initializing system...");
+        FileHandler fileHandler = new FileHandler();
+        this.hostManager = new HostManagerImpl(fileHandler);
+        this.tenantManager = new TenantManagerImpl(fileHandler);
+        this.ownerManager = new OwnerManagerImpl(fileHandler);
+        this.propertyManager = new PropertyManagerImpl(fileHandler, hostManager, tenantManager, ownerManager);
+        this.rentalManager = new RentalManagerImpl(fileHandler, tenantManager, propertyManager, hostManager, ownerManager);
+        System.out.println(" Done!");
+    }
 
+    public void start() {
+        clearScreen();
+        printWelcomeMessage();
+        initializeManagers();
+
+        while (true) {
+            String command = showMainMenu();
             switch (command) {
                 case "1":
                     handleRentalAgreements();
@@ -132,15 +138,18 @@ public class ConsoleUI {
                     handleTenants();
                     break;
                 case "3":
-                    handleHosts();
+                    handleOwners();
                     break;
                 case "4":
-                    handleProperties();
+                    handleHosts();
                     break;
                 case "5":
-                    handleReports();
+                    handleProperties();
                     break;
                 case "6":
+                    handleReports();
+                    break;
+                case "7":
                     displayExitMessage();
                     return;
                 default:
@@ -170,6 +179,7 @@ public class ConsoleUI {
         List<String> options = Arrays.asList(
                 "Manage Rental Agreements",
                 "Manage Tenants",
+                "Manage Owners",
                 "Manage Hosts",
                 "Manage Properties",
                 "Generate Reports",
@@ -192,6 +202,7 @@ public class ConsoleUI {
         int padding = (width - text.length()) / 2;
         return " ".repeat(padding) + text + " ".repeat(width - text.length() - padding);
     }
+
     private void printStatusBar() {
         String currentUser = "Admin";
         String currentDate = LocalDate.now().toString();
@@ -259,6 +270,41 @@ public class ConsoleUI {
                     break;
                 case "5":
                     searchTenants();
+                    break;
+                case "6":
+                    return;
+                default:
+                    System.out.println("Invalid choice. Please try again.");
+            }
+            readUserInputAllowEmpty("Press Enter to continue...");
+        }
+    }
+
+    private void handleOwners() {
+        while (true) {
+            clearScreen();
+            List<String> options = Arrays.asList(
+                    "Add Owner", "Update Owner", "Delete Owner",
+                    "List Owners", "Search Owners", "Back to Main Menu"
+            );
+            tableFormatter.printTable("OWNERS", options, TableFormatter.ANSI_YELLOW);
+            String choice = readUserInput("Enter your choice: ");
+
+            switch (choice) {
+                case "1":
+                    addOwner();
+                    break;
+                case "2":
+                    updateOwner();
+                    break;
+                case "3":
+                    deleteOwner();
+                    break;
+                case "4":
+                    listOwners();
+                    break;
+                case "5":
+                    searchOwners();
                     break;
                 case "6":
                     return;
@@ -387,9 +433,8 @@ public class ConsoleUI {
     private String readUserInputAllowEsc(String prompt) {
         System.out.print(prompt);
         String input = reader.readLine().trim();
-        // Check if ESC key (ASCII 27) was pressed
         if (input.equals("\u001B")) {
-            return null; // Indicates the user wants to exit
+            return null;
         }
         return input;
     }
@@ -407,7 +452,6 @@ public class ConsoleUI {
                     agreementId = null;
                 }
             } catch (IllegalArgumentException e) {
-                // This is fine, it means the agreement doesn't exist yet
                 break;
             }
         }
@@ -462,13 +506,11 @@ public class ConsoleUI {
 
     private void updateRentalAgreement() {
         while (true) {
-            String agreementId = readUserInput("Enter agreement ID to update (or 'back' to return): ");
-            if (agreementId.equalsIgnoreCase("back")) {
-                return;
-            }
+            String id = readUserInputAllowEsc("Enter agreement ID to update (press ESC to return): ");
+            if (id == null) return;
 
             try {
-                RentalAgreement agreement = rentalManager.getRentalAgreement(agreementId);
+                RentalAgreement agreement = rentalManager.getRentalAgreement(id);
                 if (agreement == null) {
                     throw new IllegalArgumentException("Rental agreement not found.");
                 }
@@ -476,53 +518,39 @@ public class ConsoleUI {
                 Date endDate = DateUtil.readOptionalDate(reader, "Enter new end date (yyyy-MM-dd, press enter to keep current): ");
                 if (endDate != null) {
                     if (endDate.before(agreement.getStartDate())) {
-                        System.out.println(TableFormatter.ANSI_RED + "End date must be after start date." + TableFormatter.ANSI_RESET);
-                    } else {
-                        agreement.setEndDate(endDate);
+                        throw new IllegalArgumentException("End date must be after start date.");
                     }
+                    agreement.setEndDate(endDate);
                 }
 
                 String rentAmountStr = readUserInputAllowEmpty("Enter new rent amount (press enter to keep current): ");
-                if (!rentAmountStr.trim().isEmpty()) {
+                if (!rentAmountStr.isEmpty()) {
                     try {
                         double rentAmount = Double.parseDouble(rentAmountStr);
                         if (rentAmount < 0) {
-                            System.out.println(TableFormatter.ANSI_RED + "Rent amount must be non-negative." + TableFormatter.ANSI_RESET);
-                        } else {
-                            agreement.setRentAmount(rentAmount);
+                            throw new IllegalArgumentException("Rent amount must be non-negative.");
                         }
+                        agreement.setRentAmount(rentAmount);
                     } catch (NumberFormatException e) {
-                        System.out.println(TableFormatter.ANSI_RED + "Invalid rent amount." + TableFormatter.ANSI_RESET);
+                        throw new IllegalArgumentException("Invalid rent amount format.");
                     }
                 }
 
-                String statusStr = readUserInput("Enter new status (NEW/ACTIVE/COMPLETED, press enter to keep current): ");
+                String statusStr = readUserInputAllowEmpty("Enter new status (NEW/ACTIVE/COMPLETED, press enter to keep current): ");
                 if (!statusStr.isEmpty()) {
                     try {
                         agreement.setStatus(RentalAgreement.Status.valueOf(statusStr.toUpperCase()));
                     } catch (IllegalArgumentException e) {
-                        System.out.println(TableFormatter.ANSI_RED + "Invalid status." + TableFormatter.ANSI_RESET);
+                        throw new IllegalArgumentException("Invalid status.");
                     }
                 }
 
                 rentalManager.updateRentalAgreement(agreement);
                 System.out.println(TableFormatter.ANSI_GREEN + "Rental agreement updated successfully." + TableFormatter.ANSI_RESET);
-
-                List<String> headers = Arrays.asList("ID", "Property", "Tenant", "Start Date", "End Date", "Rent Amount", "Status");
-                List<List<String>> data = new ArrayList<>();
-                data.add(Arrays.asList(
-                        agreement.getAgreementId(),
-                        agreement.getProperty().getPropertyId(),
-                        agreement.getMainTenant().getFullName(),
-                        agreement.getStartDate().toString(),
-                        agreement.getEndDate().toString(),
-                        String.format("%.2f", agreement.getRentAmount()),
-                        agreement.getStatus().toString()
-                ));
-                tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+                displayRentalAgreementDetails(agreement);
                 break;
             } catch (IllegalArgumentException e) {
-                System.out.println(TableFormatter.ANSI_RED + e.getMessage() + TableFormatter.ANSI_RESET);
+                System.out.println(TableFormatter.ANSI_RED + "Error: " + e.getMessage() + TableFormatter.ANSI_RESET);
                 System.out.println("Would you like to try again? (y/n)");
                 String retry = readUserInput("").toLowerCase();
                 if (!retry.equals("y")) {
@@ -545,18 +573,7 @@ public class ConsoleUI {
                     throw new IllegalArgumentException("Rental agreement not found.");
                 }
 
-                List<String> headers = Arrays.asList("ID", "Property", "Tenant", "Start Date", "End Date", "Rent Amount", "Status");
-                List<List<String>> data = new ArrayList<>();
-                data.add(Arrays.asList(
-                        agreement.getAgreementId(),
-                        agreement.getProperty().getPropertyId(),
-                        agreement.getMainTenant().getFullName(),
-                        agreement.getStartDate().toString(),
-                        agreement.getEndDate().toString(),
-                        String.format("%.2f", agreement.getRentAmount()),
-                        agreement.getStatus().toString()
-                ));
-                tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+                displayRentalAgreementDetails(agreement);
 
                 String confirm = readUserInput("Are you sure you want to delete this rental agreement? (y/n): ");
                 if (confirm.equalsIgnoreCase("y")) {
@@ -601,7 +618,6 @@ public class ConsoleUI {
         }
     }
 
-
     private void searchRentalAgreements() {
         String keyword = readUserInput("Enter search keyword: ");
         List<RentalAgreement> results = rentalManager.searchRentalAgreements(keyword);
@@ -629,36 +645,36 @@ public class ConsoleUI {
         String id = null;
         while (id == null) {
             id = readUserInputAllowEsc("Enter tenant ID (press ESC to return): ");
-            if (id == null) return; // ESC key was pressed to exit
+            if (id == null) return;
             if (tenantManager.getTenant(id) != null) {
                 System.out.println("Tenant with ID " + id + " already exists.");
-                id = null; // Reset to retry entry
+                id = null;
             }
         }
 
         String fullName = readUserInputAllowEsc("Enter full name (press ESC to return): ");
-        if (fullName == null) return; // ESC key was pressed
+        if (fullName == null) return;
 
         Date dateOfBirth = null;
         while (dateOfBirth == null) {
             String dobInput = readUserInputAllowEsc("Enter date of birth (yyyy-MM-dd, press ESC to return): ");
-            if (dobInput == null) return; // ESC key was pressed
+            if (dobInput == null) return;
             dateOfBirth = DateUtil.parseDate(dobInput);
             if (dateOfBirth == null) {
-                System.out.println("Invalid date format. Please use yyyy-MM-dd."); // Display error once
+                System.out.println("Invalid date format. Please use yyyy-MM-dd.");
             }
         }
 
         String contactInfo = null;
         while (contactInfo == null) {
             contactInfo = readUserInputAllowEsc("Enter contact information (email, press ESC to return): ");
-            if (contactInfo == null) return; // ESC key was pressed
+            if (contactInfo == null) return;
             if (!InputValidator.isValidEmail(contactInfo)) {
-                System.out.println("Invalid email format."); // Display error once
-                contactInfo = null; // Reset to retry entry
+                System.out.println("Invalid email format.");
+                contactInfo = null;
             } else if (tenantManager.isEmailTaken(contactInfo)) {
                 System.out.println("Email is already in use by another tenant.");
-                contactInfo = null; // Reset to retry entry
+                contactInfo = null;
             }
         }
 
@@ -669,10 +685,8 @@ public class ConsoleUI {
 
     private void updateTenant() {
         while (true) {
-            String id = readUserInput("Enter tenant ID to update (or 'back' to return): ");
-            if (id.equalsIgnoreCase("back")) {
-                return;
-            }
+            String id = readUserInputAllowEsc("Enter tenant ID to update (press ESC to return): ");
+            if (id == null) return;
 
             try {
                 Tenant tenant = tenantManager.getTenant(id);
@@ -692,18 +706,32 @@ public class ConsoleUI {
 
                 String contactInfo = readUserInputAllowEmpty("Enter new contact information (email, press enter to keep current): ");
                 if (!contactInfo.isEmpty()) {
-                    if (InputValidator.isValidEmail(contactInfo)) {
-                        tenant.setContactInformation(contactInfo);
-                    } else {
+                    if (!InputValidator.isValidEmail(contactInfo)) {
                         throw new IllegalArgumentException("Invalid email format.");
+                    } else if (!contactInfo.equals(tenant.getContactInformation()) && tenantManager.isEmailTaken(contactInfo)) {
+                        throw new IllegalArgumentException("Email is already in use by another tenant.");
                     }
+                    tenant.setContactInformation(contactInfo);
                 }
 
                 tenantManager.updateTenant(tenant);
                 System.out.println(TableFormatter.ANSI_GREEN + "Tenant updated successfully." + TableFormatter.ANSI_RESET);
+                List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
+                List<List<String>> data = Arrays.asList(Arrays.asList(
+                        tenant.getId(),
+                        tenant.getFullName(),
+                        tenant.getDateOfBirth().toString(),
+                        tenant.getContactInformation()
+                ));
+                tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
                 break;
             } catch (IllegalArgumentException e) {
                 System.out.println(TableFormatter.ANSI_RED + "Error: " + e.getMessage() + TableFormatter.ANSI_RESET);
+                System.out.println("Would you like to try again? (y/n)");
+                String retry = readUserInput("").toLowerCase();
+                if (!retry.equals("y")) {
+                    return;
+                }
             }
         }
     }
@@ -789,26 +817,226 @@ public class ConsoleUI {
         }
     }
 
-    private void addHost() {
+    private void addOwner() {
         String id = null;
         while (id == null) {
-            id = readUserInput("Enter host ID (or 'back' to return): ");
+            id = readUserInputAllowEsc("Enter owner ID (press ESC to return): ");
+            if (id == null) return;
+            if (ownerManager.getOwner(id) != null) {
+                System.out.println(TableFormatter.ANSI_RED + "Owner with ID " + id + " already exists." + TableFormatter.ANSI_RESET);
+                id = null;
+            }
+        }
+
+        String fullName = readUserInputAllowEsc("Enter full name (press ESC to return): ");
+        if (fullName == null) return;
+
+        Date dateOfBirth = null;
+        while (dateOfBirth == null) {
+            String dobInput = readUserInputAllowEsc("Enter date of birth (yyyy-MM-dd, press ESC to return): ");
+            if (dobInput == null) return;
+            dateOfBirth = DateUtil.parseDate(dobInput);
+            if (dateOfBirth == null) {
+                System.out.println("Invalid date format. Please use yyyy-MM-dd.");
+            }
+        }
+
+        String contactInfo = null;
+        while (contactInfo == null) {
+            contactInfo = readUserInputAllowEsc("Enter contact information (email, press ESC to return): ");
+            if (contactInfo == null) return;
+            if (!InputValidator.isValidEmail(contactInfo)) {
+                System.out.println(TableFormatter.ANSI_RED + "Invalid email format." + TableFormatter.ANSI_RESET);
+                contactInfo = null;
+            } else if (ownerManager.isEmailTaken(contactInfo)) {
+                System.out.println(TableFormatter.ANSI_RED + "Email is already in use by another owner." + TableFormatter.ANSI_RESET);
+                contactInfo = null;
+            }
+        }
+
+        try {
+            Owner owner = new Owner(id, fullName, dateOfBirth, contactInfo);
+            ownerManager.addOwner(owner);
+            System.out.println(TableFormatter.ANSI_GREEN + "Owner added successfully." + TableFormatter.ANSI_RESET);
+            List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
+            List<List<String>> data = Arrays.asList(Arrays.asList(
+                    owner.getId(),
+                    owner.getFullName(),
+                    owner.getDateOfBirth().toString(),
+                    owner.getContactInformation()
+            ));
+            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+        } catch (IllegalArgumentException e) {
+            System.out.println(TableFormatter.ANSI_RED + "Error: " + e.getMessage() + TableFormatter.ANSI_RESET);
+        }
+    }
+
+    private void updateOwner() {
+        while (true) {
+            String id = readUserInputAllowEsc("Enter owner ID to update (press ESC to return): ");
+            if (id == null) return;
+
+            try {
+                Owner owner = ownerManager.getOwner(id);
+                if (owner == null) {
+                    throw new IllegalArgumentException("Owner not found.");
+                }
+
+                String fullName = readUserInputAllowEmpty("Enter new full name (press enter to keep current): ");
+                if (!fullName.isEmpty()) {
+                    owner.setFullName(fullName);
+                }
+
+                Date dateOfBirth = DateUtil.readOptionalDate(reader, "Enter new date of birth (yyyy-MM-dd, press enter to keep current): ");
+                if (dateOfBirth != null) {
+                    owner.setDateOfBirth(dateOfBirth);
+                }
+
+                String contactInfo = readUserInputAllowEmpty("Enter new contact information (email, press enter to keep current): ");
+                if (!contactInfo.isEmpty()) {
+                    if (!InputValidator.isValidEmail(contactInfo)) {
+                        throw new IllegalArgumentException("Invalid email format.");
+                    } else if (!contactInfo.equals(owner.getContactInformation()) && ownerManager.isEmailTaken(contactInfo)) {
+                        throw new IllegalArgumentException("Email is already in use by another owner.");
+                    }
+                    owner.setContactInformation(contactInfo);
+                }
+
+                ownerManager.updateOwner(owner);
+                System.out.println(TableFormatter.ANSI_GREEN + "Owner updated successfully." + TableFormatter.ANSI_RESET);
+                List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
+                List<List<String>> data = Arrays.asList(Arrays.asList(
+                        owner.getId(),
+                        owner.getFullName(),
+                        owner.getDateOfBirth().toString(),
+                        owner.getContactInformation()
+                ));
+                tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+                break;
+            } catch (IllegalArgumentException e) {
+                System.out.println(TableFormatter.ANSI_RED + "Error: " + e.getMessage() + TableFormatter.ANSI_RESET);
+                System.out.println("Would you like to try again? (y/n)");
+                String retry = readUserInput("").toLowerCase();
+                if (!retry.equals("y")) {
+                    return;
+                }
+            }
+        }
+    }
+
+    private void deleteOwner() {
+        while (true) {
+            String id = readUserInput("Enter owner ID to delete (or 'back' to return): ");
             if (id.equalsIgnoreCase("back")) {
                 return;
             }
+
+            try {
+                Owner owner = ownerManager.getOwner(id);
+                if (owner == null) {
+                    throw new IllegalArgumentException("Owner not found.");
+                }
+
+                List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
+                List<List<String>> data = Arrays.asList(Arrays.asList(
+                        owner.getId(),
+                        owner.getFullName(),
+                        owner.getDateOfBirth().toString(),
+                        owner.getContactInformation()
+                ));
+                tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+
+                String confirm = readUserInput("Are you sure you want to delete this owner? (y/n): ");
+                if (confirm.equalsIgnoreCase("y")) {
+                    ownerManager.deleteOwner(id);
+                    System.out.println(TableFormatter.ANSI_GREEN + "Owner deleted successfully." + TableFormatter.ANSI_RESET);
+                } else {
+                    System.out.println(TableFormatter.ANSI_YELLOW + "Deletion cancelled." + TableFormatter.ANSI_RESET);
+                }
+                break;
+            } catch (IllegalArgumentException e) {
+                System.out.println(TableFormatter.ANSI_RED + e.getMessage() + TableFormatter.ANSI_RESET);
+                System.out.println("Would you like to try again? (y/n)");
+                String retry = readUserInput("").toLowerCase();
+                if (!retry.equals("y")) {
+                    return;
+                }
+            }
+        }
+    }
+
+    private void listOwners() {
+        List<Owner> owners = ownerManager.getAllOwners();
+        if (owners.isEmpty()) {
+            System.out.println(TableFormatter.ANSI_YELLOW + "No owners found." + TableFormatter.ANSI_RESET);
+        } else {
+            List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
+            List<List<String>> data = new ArrayList<>();
+            for (Owner owner : owners) {
+                data.add(Arrays.asList(
+                        owner.getId(),
+                        owner.getFullName(),
+                        owner.getDateOfBirth().toString(),
+                        owner.getContactInformation()
+                ));
+            }
+            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+        }
+    }
+
+    private void searchOwners() {
+        String keyword = readUserInput("Enter search keyword: ");
+        List<Owner> results = ownerManager.searchOwners(keyword);
+        if (results.isEmpty()) {
+            System.out.println(TableFormatter.ANSI_YELLOW + "No owners found matching the keyword: " + keyword + TableFormatter.ANSI_RESET);
+        } else {
+            List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
+            List<List<String>> data = new ArrayList<>();
+            for (Owner owner : results) {
+                data.add(Arrays.asList(
+                        owner.getId(),
+                        owner.getFullName(),
+                        owner.getDateOfBirth().toString(),
+                        owner.getContactInformation()
+                ));
+            }
+            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+        }
+    }
+
+    private void addHost() {
+        String id = null;
+        while (id == null) {
+            id = readUserInputAllowEsc("Enter host ID (press ESC to return): ");
+            if (id == null) return;
             if (hostManager.getHost(id) != null) {
                 System.out.println(TableFormatter.ANSI_RED + "Host with ID " + id + " already exists." + TableFormatter.ANSI_RESET);
                 id = null;
             }
         }
 
-        String fullName = readUserInput("Enter full name: ");
-        Date dateOfBirth = DateUtil.readDate(reader, "Enter date of birth (yyyy-MM-dd): ");
+        String fullName = readUserInputAllowEsc("Enter full name (press ESC to return): ");
+        if (fullName == null) return;
+
+        Date dateOfBirth = null;
+        while (dateOfBirth == null) {
+            String dobInput = readUserInputAllowEsc("Enter date of birth (yyyy-MM-dd, press ESC to return): ");
+            if (dobInput == null) return;
+            dateOfBirth = DateUtil.parseDate(dobInput);
+            if (dateOfBirth == null) {
+                System.out.println("Invalid date format. Please use yyyy-MM-dd.");
+            }
+        }
+
         String contactInfo = null;
         while (contactInfo == null) {
-            contactInfo = readUserInput("Enter contact information (email): ");
+            contactInfo = readUserInputAllowEsc("Enter contact information (email, press ESC to return): ");
+            if (contactInfo == null) return;
             if (!InputValidator.isValidEmail(contactInfo)) {
                 System.out.println(TableFormatter.ANSI_RED + "Invalid email format." + TableFormatter.ANSI_RESET);
+                contactInfo = null;
+            } else if (hostManager.isEmailTaken(contactInfo)) {
+                System.out.println(TableFormatter.ANSI_RED + "Email is already in use by another host." + TableFormatter.ANSI_RESET);
                 contactInfo = null;
             }
         }
@@ -816,7 +1044,6 @@ public class ConsoleUI {
         try {
             Host host = new Host(id, fullName, dateOfBirth, contactInfo);
             hostManager.addHost(host);
-
             System.out.println(TableFormatter.ANSI_GREEN + "Host added successfully." + TableFormatter.ANSI_RESET);
             List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
             List<List<String>> data = Arrays.asList(Arrays.asList(
@@ -833,10 +1060,8 @@ public class ConsoleUI {
 
     private void updateHost() {
         while (true) {
-            String id = readUserInput("Enter host ID to update (or 'back' to return): ");
-            if (id.equalsIgnoreCase("back")) {
-                return;
-            }
+            String id = readUserInputAllowEsc("Enter host ID to update (press ESC to return): ");
+            if (id == null) return;
 
             try {
                 Host host = hostManager.getHost(id);
@@ -844,7 +1069,7 @@ public class ConsoleUI {
                     throw new IllegalArgumentException("Host not found.");
                 }
 
-                String fullName = readUserInput("Enter new full name (press enter to keep current): ");
+                String fullName = readUserInputAllowEmpty("Enter new full name (press enter to keep current): ");
                 if (!fullName.isEmpty()) {
                     host.setFullName(fullName);
                 }
@@ -854,13 +1079,14 @@ public class ConsoleUI {
                     host.setDateOfBirth(dateOfBirth);
                 }
 
-                String contactInfo = readUserInput("Enter new contact information (email, press enter to keep current): ");
+                String contactInfo = readUserInputAllowEmpty("Enter new contact information (email, press enter to keep current): ");
                 if (!contactInfo.isEmpty()) {
-                    if (InputValidator.isValidEmail(contactInfo)) {
-                        host.setContactInformation(contactInfo);
-                    } else {
+                    if (!InputValidator.isValidEmail(contactInfo)) {
                         throw new IllegalArgumentException("Invalid email format.");
+                    } else if (!contactInfo.equals(host.getContactInformation()) && hostManager.isEmailTaken(contactInfo)) {
+                        throw new IllegalArgumentException("Email is already in use by another host.");
                     }
+                    host.setContactInformation(contactInfo);
                 }
 
                 hostManager.updateHost(host);
@@ -1012,24 +1238,13 @@ public class ConsoleUI {
 
         propertyManager.addProperty(property);
         System.out.println(TableFormatter.ANSI_GREEN + "Property added successfully." + TableFormatter.ANSI_RESET);
-        List<String> headers = Arrays.asList("ID", "Type", "Address", "Price", "Status", "Owner");
-        List<List<String>> data = Arrays.asList(Arrays.asList(
-                property.getPropertyId(),
-                property instanceof ResidentialProperty ? "Residential" : "Commercial",
-                property.getAddress(),
-                String.format("%.2f", property.getPrice()),
-                property.getStatus().toString(),
-                property.getOwner().getFullName()
-        ));
-        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+        displayPropertyDetails(property);
     }
 
     private void updateProperty() {
         while (true) {
-            String id = readUserInput("Enter property ID to update (or 'back' to return): ");
-            if (id.equalsIgnoreCase("back")) {
-                return;
-            }
+            String id = readUserInputAllowEsc("Enter property ID to update (press ESC to return): ");
+            if (id == null) return;
 
             try {
                 Property property = propertyManager.getProperty(id);
@@ -1037,84 +1252,108 @@ public class ConsoleUI {
                     throw new IllegalArgumentException("Property not found.");
                 }
 
-                String address = readUserInput("Enter new address (press enter to keep current): ");
+                String address = readUserInputAllowEmpty("Enter new address (press enter to keep current): ");
                 if (!address.isEmpty()) {
                     property.setAddress(address);
                 }
 
-                String priceStr = readUserInput("Enter new price (press enter to keep current): ");
+                String priceStr = readUserInputAllowEmpty("Enter new price (press enter to keep current): ");
                 if (!priceStr.isEmpty()) {
                     try {
                         double price = Double.parseDouble(priceStr);
                         if (price < 0) {
-                            System.out.println(TableFormatter.ANSI_RED + "Price must be non-negative." + TableFormatter.ANSI_RESET);
-                        } else {
-                            property.setPrice(price);
+                            throw new IllegalArgumentException("Price must be non-negative.");
                         }
+                        property.setPrice(price);
                     } catch (NumberFormatException e) {
-                        System.out.println(TableFormatter.ANSI_RED + "Invalid price." + TableFormatter.ANSI_RESET);
+                        throw new IllegalArgumentException("Invalid price format.");
                     }
                 }
 
-                String statusStr = readUserInput("Enter new status (AVAILABLE/RENTED/UNDER_MAINTENANCE, press enter to keep current): ");
+                String statusStr = readUserInputAllowEmpty("Enter new status (AVAILABLE/RENTED/UNDER_MAINTENANCE, press enter to keep current): ");
                 if (!statusStr.isEmpty()) {
                     try {
                         property.setStatus(Property.PropertyStatus.valueOf(statusStr.toUpperCase()));
                     } catch (IllegalArgumentException e) {
-                        System.out.println(TableFormatter.ANSI_RED + "Invalid status." + TableFormatter.ANSI_RESET);
+                        throw new IllegalArgumentException("Invalid status.");
                     }
                 }
 
                 if (property instanceof ResidentialProperty) {
-                    ResidentialProperty rp = (ResidentialProperty) property;
-                    String bedroomsStr = readUserInput("Enter new number of bedrooms (press enter to keep current): ");
-                    if (!bedroomsStr.isEmpty()) {
-                        rp.setNumberOfBedrooms(Integer.parseInt(bedroomsStr));
-                    }
-                    String hasGardenStr = readUserInput("Has garden? (true/false, press enter to keep current): ");
-                    if (!hasGardenStr.isEmpty()) {
-                        rp.setHasGarden(Boolean.parseBoolean(hasGardenStr));
-                    }
-                    String isPetFriendlyStr = readUserInput("Is pet friendly? (true/false, press enter to keep current): ");
-                    if (!isPetFriendlyStr.isEmpty()) {
-                        rp.setPetFriendly(Boolean.parseBoolean(isPetFriendlyStr));
-                    }
+                    updateResidentialProperty((ResidentialProperty) property);
                 } else if (property instanceof CommercialProperty) {
-                    CommercialProperty cp = (CommercialProperty) property;
-                    String businessType = readUserInput("Enter new business type (press enter to keep current): ");
-                    if (!businessType.isEmpty()) {
-                        cp.setBusinessType(businessType);
-                    }
-                    String parkingSpacesStr = readUserInput("Enter new number of parking spaces (press enter to keep current): ");
-                    if (!parkingSpacesStr.isEmpty()) {
-                        cp.setParkingSpaces(Integer.parseInt(parkingSpacesStr));
-                    }
-                    String squareFootageStr = readUserInput("Enter new square footage (press enter to keep current): ");
-                    if (!squareFootageStr.isEmpty()) {
-                        cp.setSquareFootage(Double.parseDouble(squareFootageStr));
-                    }
+                    updateCommercialProperty((CommercialProperty) property);
                 }
 
                 propertyManager.updateProperty(property);
                 System.out.println(TableFormatter.ANSI_GREEN + "Property updated successfully." + TableFormatter.ANSI_RESET);
-                List<String> headers = Arrays.asList("ID", "Type", "Address", "Price", "Status", "Owner");
-                List<List<String>> data = Arrays.asList(Arrays.asList(
-                        property.getPropertyId(),
-                        property instanceof ResidentialProperty ? "Residential" : "Commercial",
-                        property.getAddress(),
-                        String.format("%.2f", property.getPrice()),
-                        property.getStatus().toString(),
-                        property.getOwner().getFullName()
-                ));
-                tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+                displayPropertyDetails(property);
                 break;
             } catch (IllegalArgumentException e) {
-                System.out.println(TableFormatter.ANSI_RED + e.getMessage() + TableFormatter.ANSI_RESET);
+                System.out.println(TableFormatter.ANSI_RED + "Error: " + e.getMessage() + TableFormatter.ANSI_RESET);
                 System.out.println("Would you like to try again? (y/n)");
                 String retry = readUserInput("").toLowerCase();
                 if (!retry.equals("y")) {
                     return;
                 }
+            }
+        }
+    }
+
+    private void updateResidentialProperty(ResidentialProperty property) {
+        String bedroomsStr = readUserInputAllowEmpty("Enter new number of bedrooms (press enter to keep current): ");
+        if (!bedroomsStr.isEmpty()) {
+            try {
+                int bedrooms = Integer.parseInt(bedroomsStr);
+                if (bedrooms < 0) {
+                    throw new IllegalArgumentException("Number of bedrooms must be non-negative.");
+                }
+                property.setNumberOfBedrooms(bedrooms);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid number format for bedrooms.");
+            }
+        }
+
+        String hasGardenStr = readUserInputAllowEmpty("Has garden? (true/false, press enter to keep current): ");
+        if (!hasGardenStr.isEmpty()) {
+            property.setHasGarden(Boolean.parseBoolean(hasGardenStr));
+        }
+
+        String isPetFriendlyStr = readUserInputAllowEmpty("Is pet friendly? (true/false, press enter to keep current): ");
+        if (!isPetFriendlyStr.isEmpty()) {
+            property.setPetFriendly(Boolean.parseBoolean(isPetFriendlyStr));
+        }
+    }
+
+    private void updateCommercialProperty(CommercialProperty property) {
+        String businessType = readUserInputAllowEmpty("Enter new business type (press enter to keep current): ");
+        if (!businessType.isEmpty()) {
+            property.setBusinessType(businessType);
+        }
+
+        String parkingSpacesStr = readUserInputAllowEmpty("Enter new number of parking spaces (press enter to keep current): ");
+        if (!parkingSpacesStr.isEmpty()) {
+            try {
+                int parkingSpaces = Integer.parseInt(parkingSpacesStr);
+                if (parkingSpaces < 0) {
+                    throw new IllegalArgumentException("Number of parking spaces must be non-negative.");
+                }
+                property.setParkingSpaces(parkingSpaces);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid number format for parking spaces.");
+            }
+        }
+
+        String squareFootageStr = readUserInputAllowEmpty("Enter new square footage (press enter to keep current): ");
+        if (!squareFootageStr.isEmpty()) {
+            try {
+                double squareFootage = Double.parseDouble(squareFootageStr);
+                if (squareFootage < 0) {
+                    throw new IllegalArgumentException("Square footage must be non-negative.");
+                }
+                property.setSquareFootage(squareFootage);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("Invalid number format for square footage.");
             }
         }
     }
@@ -1132,16 +1371,7 @@ public class ConsoleUI {
                     throw new IllegalArgumentException("Property not found.");
                 }
 
-                List<String> headers = Arrays.asList("ID", "Type", "Address", "Price", "Status", "Owner");
-                List<List<String>> data = Arrays.asList(Arrays.asList(
-                        property.getPropertyId(),
-                        property instanceof ResidentialProperty ? "Residential" : "Commercial",
-                        property.getAddress(),
-                        String.format("%.2f", property.getPrice()),
-                        property.getStatus().toString(),
-                        property.getOwner().getFullName()
-                ));
-                tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+                displayPropertyDetails(property);
 
                 String confirm = readUserInput("Are you sure you want to delete this property? (y/n): ");
                 if (confirm.equalsIgnoreCase("y")) {
@@ -1207,162 +1437,18 @@ public class ConsoleUI {
             tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
         }
     }
-    private void addOwner() {
-        String id = null;
-        while (id == null) {
-            id = readUserInput("Enter owner ID (or 'back' to return): ");
-            if (id.equalsIgnoreCase("back")) {
-                return;
-            }
-            if (ownerManager.getOwner(id) != null) {
-                System.out.println(TableFormatter.ANSI_RED + "Owner with ID " + id + " already exists." + TableFormatter.ANSI_RESET);
-                id = null;
-            }
-        }
 
-        String fullName = readUserInput("Enter full name: ");
-        Date dateOfBirth = DateUtil.readDate(reader, "Enter date of birth (yyyy-MM-dd): ");
-        String contactInfo = null;
-        while (contactInfo == null) {
-            contactInfo = readUserInput("Enter contact information (email): ");
-            if (!InputValidator.isValidEmail(contactInfo)) {
-                System.out.println(TableFormatter.ANSI_RED + "Invalid email format." + TableFormatter.ANSI_RESET);
-                contactInfo = null;
-            }
-        }
-
-        try {
-            Owner owner = new Owner(id, fullName, dateOfBirth, contactInfo);
-            ownerManager.addOwner(owner);
-
-            System.out.println(TableFormatter.ANSI_GREEN + "Owner added successfully." + TableFormatter.ANSI_RESET);
-            List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
-            List<List<String>> data = Arrays.asList(Arrays.asList(
-                    owner.getId(),
-                    owner.getFullName(),
-                    owner.getDateOfBirth().toString(),
-                    owner.getContactInformation()
-            ));
-            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
-        } catch (IllegalArgumentException e) {
-            System.out.println(TableFormatter.ANSI_RED + "Error: " + e.getMessage() + TableFormatter.ANSI_RESET);
-        }
-    }
-
-    private void updateOwner() {
-        while (true) {
-            String id = readUserInput("Enter owner ID to update (or 'back' to return): ");
-            if (id.equalsIgnoreCase("back")) {
-                return;
-            }
-
-            try {
-                Owner owner = ownerManager.getOwner(id);
-                if (owner == null) {
-                    throw new IllegalArgumentException("Owner not found.");
-                }
-
-                String fullName = readUserInput("Enter new full name (press enter to keep current): ");
-                if (!fullName.isEmpty()) {
-                    owner.setFullName(fullName);
-                }
-
-                Date dateOfBirth = DateUtil.readOptionalDate(reader, "Enter new date of birth (yyyy-MM-dd, press enter to keep current): ");
-                if (dateOfBirth != null) {
-                    owner.setDateOfBirth(dateOfBirth);
-                }
-
-                String contactInfo = readUserInputAllowEmpty("Enter new contact information (email, press enter to keep current): ");
-                if (!contactInfo.isEmpty()) {
-                    if (!InputValidator.isValidEmail(contactInfo)) {
-                        throw new IllegalArgumentException("Invalid email format.");
-                    } else if (!contactInfo.equals(owner.getContactInformation()) && tenantManager.getTenantByEmail(contactInfo) != null) {
-                        throw new IllegalArgumentException("Email is already in use by another tenant.");
-                    } else {
-                        owner.setContactInformation(contactInfo);
-                    }
-                }
-
-                ownerManager.updateOwner(owner);
-                System.out.println(TableFormatter.ANSI_GREEN + "Owner updated successfully." + TableFormatter.ANSI_RESET);
-                List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
-                List<List<String>> data = Arrays.asList(Arrays.asList(
-                        owner.getId(),
-                        owner.getFullName(),
-                        owner.getDateOfBirth().toString(),
-                        owner.getContactInformation()
-                ));
-                tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
-                break;
-            } catch (IllegalArgumentException e) {
-                System.out.println(TableFormatter.ANSI_RED + "Error: " + e.getMessage() + TableFormatter.ANSI_RESET);
-                System.out.println("Would you like to try again? (y/n)");
-                String retry = readUserInput("").toLowerCase();
-                if (!retry.equals("y")) {
-                    return;
-                }
-            }
-        }
-    }
-
-    private void deleteOwner() {
-        while (true) {
-            String id = readUserInput("Enter owner ID to delete (or 'back' to return): ");
-            if (id.equalsIgnoreCase("back")) {
-                return;
-            }
-
-            try {
-                Owner owner = ownerManager.getOwner(id);
-                if (owner == null) {
-                    throw new IllegalArgumentException("Owner not found.");
-                }
-
-                List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
-                List<List<String>> data = Arrays.asList(Arrays.asList(
-                        owner.getId(),
-                        owner.getFullName(),
-                        owner.getDateOfBirth().toString(),
-                        owner.getContactInformation()
-                ));
-                tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
-
-                String confirm = readUserInput("Are you sure you want to delete this owner? (y/n): ");
-                if (confirm.equalsIgnoreCase("y")) {
-                    ownerManager.deleteOwner(id);
-                    System.out.println(TableFormatter.ANSI_GREEN + "Owner deleted successfully." + TableFormatter.ANSI_RESET);
-                } else {
-                    System.out.println(TableFormatter.ANSI_YELLOW + "Deletion cancelled." + TableFormatter.ANSI_RESET);
-                }
-                break;
-            } catch (IllegalArgumentException e) {
-                System.out.println(TableFormatter.ANSI_RED + e.getMessage() + TableFormatter.ANSI_RESET);
-                System.out.println("Would you like to try again? (y/n)");
-                String retry = readUserInput("").toLowerCase();
-                if (!retry.equals("y")) {
-                    return;
-                }
-            }
-        }
-    }
-
-    private void listOwners() {
-        List<Owner> owners = ownerManager.getAllOwners();
-        if (owners.isEmpty()) {
-            System.out.println(TableFormatter.ANSI_YELLOW + "No owners found." + TableFormatter.ANSI_RESET);
-        } else {
-            List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
-            List<List<String>> data = new ArrayList<>();
-            for (Owner owner : owners) {
-                data.add(Arrays.asList(
-                        owner.getId(),
-                        owner.getFullName(),
-                        owner.getDateOfBirth().toString(),
-                        owner.getContactInformation()
-                ));
-            }
-            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
-        }
+    private void displayPropertyDetails(Property property) {
+        List<String> headers = Arrays.asList("ID", "Type", "Address", "Price", "Status", "Owner");
+        List<List<String>> data = Arrays.asList(Arrays.asList(
+                property.getPropertyId(),
+                property instanceof ResidentialProperty ? "Residential" : "Commercial",
+                property.getAddress(),
+                String.format("%.2f", property.getPrice()),
+                property.getStatus().toString(),
+                property.getOwner().getFullName()
+        ));
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
     }
 
     private void generateIncomeReport() {
@@ -1421,16 +1507,23 @@ public class ConsoleUI {
         tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
     }
 
+    private void displayRentalAgreementDetails(RentalAgreement agreement) {
+        List<String> headers = Arrays.asList("ID", "Property", "Tenant", "Start Date", "End Date", "Rent Amount", "Status");
+        List<List<String>> data = Arrays.asList(Arrays.asList(
+                agreement.getAgreementId(),
+                agreement.getProperty().getPropertyId(),
+                agreement.getMainTenant().getFullName(),
+                agreement.getStartDate().toString(),
+                agreement.getEndDate().toString(),
+                String.format("%.2f", agreement.getRentAmount()),
+                agreement.getStatus().toString()
+        ));
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+    }
+
     public static void main(String[] args) {
         try {
-            FileHandler fileHandler = new FileHandler();
-            HostManager hostManager = new HostManagerImpl(fileHandler);
-            TenantManager tenantManager = new TenantManagerImpl(fileHandler);
-            OwnerManager ownerManager = new OwnerManagerImpl(fileHandler);
-            PropertyManager propertyManager = new PropertyManagerImpl(fileHandler, hostManager, tenantManager, ownerManager);
-            RentalManager rentalManager = new RentalManagerImpl(fileHandler, tenantManager, propertyManager, hostManager, ownerManager);
-
-            ConsoleUI consoleUI = new ConsoleUI(rentalManager, tenantManager, ownerManager, hostManager, propertyManager);
+            ConsoleUI consoleUI = new ConsoleUI();
             consoleUI.start();
         } catch (IOException e) {
             System.err.println("Error initializing the application: " + e.getMessage());

@@ -12,7 +12,7 @@ public class PropertyManagerImpl implements PropertyManager {
     private TenantManager tenantManager;
     private OwnerManager ownerManager;
 
-    public PropertyManagerImpl(FileHandler fileHandler, HostManager hostManager, TenantManager tenantManager, OwnerManager ownerManager) {        System.out.println("Initializing PropertyManagerImpl");
+    public PropertyManagerImpl(FileHandler fileHandler, HostManager hostManager, TenantManager tenantManager, OwnerManager ownerManager) {
         this.fileHandler = fileHandler;
         this.hostManager = hostManager;
         this.tenantManager = tenantManager;
@@ -22,34 +22,26 @@ public class PropertyManagerImpl implements PropertyManager {
     }
 
     private void loadProperties() {
-        System.out.println("Loading properties in PropertyManagerImpl");
         List<Property> loadedProperties = fileHandler.loadProperties();
-        System.out.println("Loaded " + loadedProperties.size() + " properties from FileHandler");
         for (Property property : loadedProperties) {
             properties.put(property.getPropertyId(), property);
-            System.out.println("Added property to map: " + property.getPropertyId());
 
-            // Ensure host relationship is set
             if (property.getHost() != null) {
                 Host host = hostManager.getHost(property.getHost().getId());
                 if (host != null) {
                     property.setHost(host);
                     host.addManagedProperty(property);
-                    System.out.println("Set host " + host.getId() + " for property " + property.getPropertyId());
                 }
             }
 
-            // Ensure owner relationship is set
             if (property.getOwner() != null) {
                 Owner owner = ownerManager.getOwner(property.getOwner().getId());
                 if (owner != null) {
                     property.setOwner(owner);
                     owner.addOwnedProperty(property);
-                    System.out.println("Set owner " + owner.getId() + " for property " + property.getPropertyId());
                 }
             }
 
-            // Ensure current tenant relationship is set if the property is rented
             if (property.getStatus() == Property.PropertyStatus.RENTED) {
                 RentalAgreement agreement = findActiveRentalAgreement(property);
                 if (agreement != null) {
@@ -57,12 +49,10 @@ public class PropertyManagerImpl implements PropertyManager {
                     if (tenant != null) {
                         property.setCurrentTenant(tenant);
                         tenant.addRentedProperty(property);
-                        System.out.println("Set current tenant " + tenant.getId() + " for property " + property.getPropertyId());
                     }
                 }
             }
         }
-        System.out.println("PropertyManagerImpl now has " + properties.size() + " properties");
     }
 
     private RentalAgreement findActiveRentalAgreement(Property property) {
@@ -80,7 +70,6 @@ public class PropertyManagerImpl implements PropertyManager {
         }
         properties.put(property.getPropertyId(), property);
         saveProperties();
-        System.out.println("Added new property: " + property.getPropertyId());
     }
 
     @Override

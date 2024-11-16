@@ -55,11 +55,6 @@ public class HostManagerImpl implements HostManager {
         saveHosts();
     }
 
-    private boolean isEmailTaken(String email) {
-        return hosts.values().stream()
-                .anyMatch(host -> host.getContactInformation().equalsIgnoreCase(email));
-    }
-
     @Override
     public void deleteHost(String hostId) {
         if (!hosts.containsKey(hostId)) {
@@ -91,6 +86,12 @@ public class HostManagerImpl implements HostManager {
                         host.getId().toLowerCase().contains(lowercaseKeyword) ||
                         host.getContactInformation().toLowerCase().contains(lowercaseKeyword))
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public boolean isEmailTaken(String email) {
+        return hosts.values().stream()
+                .anyMatch(host -> host.getContactInformation().equalsIgnoreCase(email));
     }
 
     private void saveHosts() {

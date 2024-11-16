@@ -10,4 +10,5 @@ public interface HostManager {
     Host getHost(String hostId);
     List<Host> getAllHosts();
     List<Host> searchHosts(String keyword);
+    boolean isEmailTaken(String email);
 }

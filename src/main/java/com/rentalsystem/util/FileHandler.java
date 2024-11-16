@@ -148,18 +148,14 @@ public class FileHandler {
         List<Property> properties = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(DATA_DIRECTORY + "properties.txt"))) {
             String line;
-            System.out.println("Attempting to load properties from: " + DATA_DIRECTORY + "properties.txt");
             while ((line = reader.readLine()) != null) {
-                System.out.println("Read line: " + line);
                 String[] parts = line.split(",");
                 if (parts.length < 6) {
-                    System.out.println("Skipping invalid line: " + line);
                     continue;
                 }
 
                 Owner owner = getOwnerById(parts[5]);
                 if (owner == null) {
-                    System.out.println("Skipping property due to missing owner: " + line);
                     continue;
                 }
 
@@ -178,27 +174,22 @@ public class FileHandler {
                             parts[7], Integer.parseInt(parts[8]), Double.parseDouble(parts[9])
                     );
                 } else {
-                    System.out.println("Skipping invalid property type: " + line);
                     continue;
                 }
 
-                // Set host if available
                 if (parts.length > 6 && !parts[6].isEmpty()) {
                     Host host = getHostById(parts[6]);
                     if (host != null) {
                         property.setHost(host);
-                        System.out.println("Set host " + host.getId() + " for property " + property.getPropertyId());
                     }
                 }
 
                 properties.add(property);
-                System.out.println("Added property: " + property);
             }
         } catch (IOException | NumberFormatException e) {
             System.err.println("Error loading properties: " + e.getMessage());
             e.printStackTrace();
         }
-        System.out.println("Loaded " + properties.size() + " properties");
         return properties;
     }
 
