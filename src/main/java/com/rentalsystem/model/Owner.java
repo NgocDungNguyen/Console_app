@@ -4,15 +4,16 @@ import java.util.*;
 
 public class Owner extends Person {
     private List<Property> ownedProperties;
-    private Set<Host> managingHosts;
+    private List<Host> managingHosts;
     private List<RentalAgreement> rentalAgreements;
 
     public Owner(String id, String fullName, Date dateOfBirth, String contactInformation) {
         super(id, fullName, dateOfBirth, contactInformation);
         this.ownedProperties = new ArrayList<>();
-        this.managingHosts = new HashSet<>();
+        this.managingHosts = new ArrayList<>();
         this.rentalAgreements = new ArrayList<>();
     }
+
 
     public List<Property> getOwnedProperties() {
         return new ArrayList<>(ownedProperties);
@@ -28,14 +29,16 @@ public class Owner extends Person {
         ownedProperties.remove(property);
     }
 
-    public Set<Host> getManagingHosts() {
-        return new HashSet<>(managingHosts);
+    public List<Host> getManagingHosts() {
+        return new ArrayList<>(managingHosts);
     }
 
     public void addManagingHost(Host host) {
-        managingHosts.add(host);
+        if (!managingHosts.contains(host)) {
+            managingHosts.add(host);
+            host.addCooperatingOwner(this);
+        }
     }
-
     public void removeManagingHost(Host host) {
         managingHosts.remove(host);
     }
@@ -54,10 +57,6 @@ public class Owner extends Person {
     // You might want to add these methods as well
     public void removeManagedAgreement(RentalAgreement agreement) {
         rentalAgreements.remove(agreement);
-    }
-
-    public List<RentalAgreement> getManagedAgreements() {
-        return new ArrayList<>(rentalAgreements);
     }
 
     public void addRentalAgreement(RentalAgreement agreement) {
