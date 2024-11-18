@@ -15,19 +15,21 @@ public class Host extends Person {
     }
 
     public List<Property> getManagedProperties() {
-        System.out.println("Host " + getId() + " has " + managedProperties.size() + " managed properties");
         return new ArrayList<>(managedProperties);
     }
 
     public void addManagedProperty(Property property) {
         if (!managedProperties.contains(property)) {
             managedProperties.add(property);
+            property.setHost(this);
         }
     }
 
     public void removeManagedProperty(Property property) {
         if (managedProperties.remove(property)) {
-            property.setHost(null);
+            if (property.getHost() == this) {
+                property.setHost(null);
+            }
         }
     }
 
