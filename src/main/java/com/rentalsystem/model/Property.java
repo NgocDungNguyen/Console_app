@@ -11,7 +11,7 @@ public abstract class Property {
     private PropertyStatus status;
     private Owner owner;
     private Host host;
-    private Tenant currentTenant;
+    private List<Tenant> tenants = new ArrayList<>();
     private List<RentalAgreement> rentalHistory;
 
     public enum PropertyStatus {
@@ -24,6 +24,7 @@ public abstract class Property {
         this.price = price;
         this.status = status;
         this.owner = owner;
+        this.tenants = new ArrayList<>();
         this.rentalHistory = new ArrayList<>();
     }
 
@@ -64,7 +65,13 @@ public abstract class Property {
     }
 
     public void setOwner(Owner owner) {
+        if (this.owner != null) {
+            this.owner.removeOwnedProperty(this);
+        }
         this.owner = owner;
+        if (owner != null) {
+            owner.addOwnedProperty(this);
+        }
     }
 
     public Host getHost() {
@@ -88,21 +95,18 @@ public abstract class Property {
         }
     }
 
-    public Tenant getCurrentTenant() {
-        return currentTenant;
+    public List<Tenant> getTenants() {
+        return new ArrayList<>(tenants);
     }
 
-    public void setCurrentTenant(Tenant tenant) {
-        if (this.currentTenant != null) {
-            this.currentTenant.removeRentedProperty(this);
+    public void addTenant(Tenant tenant) {
+        if (!tenants.contains(tenant)) {
+            tenants.add(tenant);
         }
-        this.currentTenant = tenant;
-        if (tenant != null) {
-            tenant.addRentedProperty(this);
-            this.status = PropertyStatus.RENTED;
-        } else {
-            this.status = PropertyStatus.AVAILABLE;
-        }
+    }
+
+    public void removeTenant(Tenant tenant) {
+        tenants.remove(tenant);
     }
 
     public void addRentalAgreement(RentalAgreement agreement) {
@@ -135,7 +139,7 @@ public abstract class Property {
                 ", status=" + status +
                 ", owner=" + (owner != null ? owner.getId() + " - " + owner.getFullName() : "N/A") +
                 ", host=" + (host != null ? host.getId() + " - " + host.getFullName() : "N/A") +
-                ", currentTenant=" + (currentTenant != null ? currentTenant.getId() + " - " + currentTenant.getFullName() : "N/A") +
+                ", tenants=" + tenants.size() +
                 '}';
     }
 }
