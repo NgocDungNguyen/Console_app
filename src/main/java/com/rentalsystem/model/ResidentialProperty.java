@@ -1,5 +1,8 @@
 package com.rentalsystem.model;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class ResidentialProperty extends Property {
     private int numberOfBedrooms;
     private boolean hasGarden;
@@ -11,6 +14,10 @@ public class ResidentialProperty extends Property {
         this.numberOfBedrooms = numberOfBedrooms;
         this.hasGarden = hasGarden;
         this.isPetFriendly = isPetFriendly;
+    }
+
+    public List<Tenant> getSubTenants() {
+        return new ArrayList<>(); // Implement this method properly
     }
 
     public int getNumberOfBedrooms() {
