@@ -116,9 +116,16 @@ public class FileHandler {
                         String.valueOf(property.getPrice()),
                         property.getStatus().toString(),
                         property.getOwner().getId(),
-                        property.getHost() != null ? property.getHost().getId() : "",
-                        property.getCurrentTenant() != null ? property.getCurrentTenant().getId() : ""
+                        property.getHost() != null ? property.getHost().getId() : ""
                 ));
+
+                // Add tenant information
+                List<Tenant> tenants = property.getTenants();
+                if (!tenants.isEmpty()) {
+                    propertyData.add(tenants.get(0).getId()); // Assuming the first tenant is the main tenant
+                } else {
+                    propertyData.add(""); // No tenant
+                }
 
                 if (property instanceof ResidentialProperty) {
                     ResidentialProperty rp = (ResidentialProperty) property;
@@ -283,6 +290,61 @@ public class FileHandler {
         }
         return hosts;
     }
+
+    public void savePayments(List<Payment> payments) {
+        try (PrintWriter writer = new PrintWriter(new FileWriter(DATA_DIRECTORY + "payments.txt"))) {
+            for (Payment payment : payments) {
+                writer.println(String.join(",",
+                        payment.getPaymentId(),
+                        payment.getRentalAgreement().getAgreementId(),
+                        payment.getTenant().getId(),
+                        DATE_FORMAT.format(payment.getPaymentDate()),
+                        String.valueOf(payment.getAmount()),
+                        payment.getPaymentMethod()
+                ));
+            }
+        } catch (IOException e) {
+            System.err.println("Error saving payments");
+            e.printStackTrace();
+        }
+    }
+
+    public List<Payment> loadPayments() {
+        List<Payment> payments = new ArrayList<>();
+        for (String line : readLines("payments.txt")) {
+            String[] parts = line.split(",");
+            if (parts.length == 6) {
+                try {
+                    RentalAgreement agreement = getRentalAgreementById(parts[1]);
+                    Tenant tenant = getTenantById(parts[2]);
+                    if (agreement != null && tenant != null) {
+                        payments.add(new Payment(
+                                parts[0],
+                                agreement,
+                                tenant,
+                                DATE_FORMAT.parse(parts[3]),
+                                Double.parseDouble(parts[4]),
+                                parts[5]
+                        ));
+                    } else {
+                        System.err.println("Error loading payment: Agreement or Tenant not found for line: " + line);
+                    }
+                } catch (ParseException | NumberFormatException e) {
+                    System.err.println("Error parsing payment: " + line);
+                    e.printStackTrace();
+                }
+            }
+        }
+        return payments;
+    }
+
+    private RentalAgreement getRentalAgreementById(String agreementId) {
+        return loadRentalAgreements().stream()
+                .filter(a -> a.getAgreementId().equals(agreementId))
+                .findFirst()
+                .orElse(null);
+    }
+
 
     private Property getPropertyById(String propertyId) {
         return loadProperties().stream()
