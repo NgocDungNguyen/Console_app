@@ -14,4 +14,5 @@ public interface PropertyManager {
     List<Property> searchProperties(String keyword);
     int getTotalProperties();
     int getOccupiedProperties();
+    List<Property> getSorted(String sortBy);
 }
