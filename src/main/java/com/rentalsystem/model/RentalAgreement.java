@@ -39,15 +39,12 @@ public class RentalAgreement {
         this.status = Status.NEW;
         this.payments = new ArrayList<>();
 
-        property.setCurrentTenant(mainTenant);
+        property.addTenant(mainTenant);
         property.addRentalAgreement(this);
         mainTenant.addRentalAgreement(this);
-        mainTenant.addRentedProperty(property);
         host.addManagedAgreement(this);
         owner.addRentalAgreement(this);
     }
-
-    // Getters and setters
 
     public String getAgreementId() { return agreementId; }
     public Property getProperty() { return property; }
@@ -64,10 +61,27 @@ public class RentalAgreement {
     public void setStatus(Status status) { this.status = status; }
     public List<Tenant> getSubTenants() { return new ArrayList<>(subTenants); }
 
+    public void setProperty(Property newProperty) {
+        if (this.property != null) {
+            this.property.removeTenant(mainTenant);
+            for (Tenant subTenant : subTenants) {
+                this.property.removeTenant(subTenant);
+            }
+        }
+        this.property = newProperty;
+        if (newProperty != null) {
+            newProperty.addTenant(mainTenant);
+            for (Tenant subTenant : subTenants) {
+                newProperty.addTenant(subTenant);
+            }
+        }
+    }
+
     public void addSubTenant(Tenant subTenant) {
         if (!subTenants.contains(subTenant)) {
             subTenants.add(subTenant);
             subTenant.addRentalAgreement(this);
+            property.addTenant(subTenant);
         }
     }
 
@@ -75,6 +89,7 @@ public class RentalAgreement {
         subTenants.removeIf(tenant -> {
             if (tenant.getId().equals(subTenantId)) {
                 tenant.removeRentalAgreement(this);
+                property.removeTenant(tenant);
                 return true;
             }
             return false;
