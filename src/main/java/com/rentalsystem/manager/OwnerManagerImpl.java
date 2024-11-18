@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.Comparator;
 
 import com.rentalsystem.model.Owner;
 import com.rentalsystem.util.FileHandler;
@@ -77,6 +78,29 @@ public class OwnerManagerImpl implements OwnerManager {
     public List<Owner> getAllOwners() {
         return new ArrayList<>(owners.values());
     }
+
+    @Override
+    public List<Owner> getSorted(String sortBy) {
+        List<Owner> sortedList = new ArrayList<>(owners.values());
+        switch (sortBy.toLowerCase()) {
+            case "id":
+                sortedList.sort(Comparator.comparing(Owner::getId));
+                break;
+            case "name":
+                sortedList.sort(Comparator.comparing(Owner::getFullName));
+                break;
+            case "dob":
+                sortedList.sort(Comparator.comparing(Owner::getDateOfBirth));
+                break;
+            case "email":
+                sortedList.sort(Comparator.comparing(Owner::getContactInformation));
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid sort criteria: " + sortBy);
+        }
+        return sortedList;
+    }
+
 
     @Override
     public List<Owner> searchOwners(String keyword) {
