@@ -1,7 +1,6 @@
 package com.rentalsystem.manager;
 
-import com.rentalsystem.model.RentalAgreement;
-import com.rentalsystem.model.Tenant;
+import com.rentalsystem.model.*;
 import com.rentalsystem.util.FileHandler;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -14,7 +13,8 @@ public class RentalManagerImpl implements RentalManager {
     private HostManager hostManager;
     private OwnerManager ownerManager;
 
-    public RentalManagerImpl(FileHandler fileHandler, TenantManager tenantManager, PropertyManager propertyManager, HostManager hostManager, OwnerManager ownerManager) {        this.fileHandler = fileHandler;
+    public RentalManagerImpl(FileHandler fileHandler, TenantManager tenantManager, PropertyManager propertyManager, HostManager hostManager, OwnerManager ownerManager) {
+        this.fileHandler = fileHandler;
         this.tenantManager = tenantManager;
         this.propertyManager = propertyManager;
         this.hostManager = hostManager;
@@ -28,13 +28,40 @@ public class RentalManagerImpl implements RentalManager {
         for (RentalAgreement agreement : loadedAgreements) {
             rentalAgreements.put(agreement.getAgreementId(), agreement);
 
-            // Associate the agreement with the tenant
-            Tenant tenant = tenantManager.getTenant(agreement.getMainTenant().getId());
-            if (tenant != null) {
-                tenant.addRentalAgreement(agreement);
+            Property property = propertyManager.getProperty(agreement.getProperty().getPropertyId());
+            Tenant mainTenant = tenantManager.getTenant(agreement.getMainTenant().getId());
+            Host host = hostManager.getHost(agreement.getHost().getId());
+            Owner owner = ownerManager.getOwner(agreement.getOwner().getId());
+
+            if (property != null && mainTenant != null && host != null && owner != null) {
+                agreement.setProperty(property);
+                property.addTenant(mainTenant);
+                mainTenant.addRentalAgreement(agreement);
+                host.addManagedAgreement(agreement);
+                owner.addRentalAgreement(agreement);
+
+                for (Tenant subTenant : agreement.getSubTenants()) {
+                    Tenant actualSubTenant = tenantManager.getTenant(subTenant.getId());
+                    if (actualSubTenant != null) {
+                        agreement.addSubTenant(actualSubTenant);
+                        property.addTenant(actualSubTenant);
+                    }
+                }
             }
         }
     }
+
+    private void updateAgreementStatus(RentalAgreement agreement) {
+        Date currentDate = new Date();
+        if (agreement.getStartDate().after(currentDate)) {
+            agreement.setStatus(RentalAgreement.Status.NEW);
+        } else if (agreement.getEndDate().before(currentDate)) {
+            agreement.setStatus(RentalAgreement.Status.COMPLETED);
+        } else {
+            agreement.setStatus(RentalAgreement.Status.ACTIVE);
+        }
+    }
+
 
     @Override
     public void addRentalAgreement(RentalAgreement agreement) {
@@ -42,32 +69,70 @@ public class RentalManagerImpl implements RentalManager {
             throw new IllegalArgumentException("Rental agreement with ID " + agreement.getAgreementId() + " already exists.");
         }
         rentalAgreements.put(agreement.getAgreementId(), agreement);
+        updateAgreementStatus(agreement);
 
-        // Update related entities
-        agreement.getProperty().setCurrentTenant(agreement.getMainTenant());
-        agreement.getProperty().addRentalAgreement(agreement);
+        agreement.getProperty().addTenant(agreement.getMainTenant());
         agreement.getMainTenant().addRentalAgreement(agreement);
         agreement.getHost().addManagedAgreement(agreement);
         agreement.getOwner().addRentalAgreement(agreement);
+
+        for (Tenant subTenant : agreement.getSubTenants()) {
+            agreement.getProperty().addTenant(subTenant);
+            subTenant.addRentalAgreement(agreement);
+        }
 
         saveRentalAgreements();
     }
 
     @Override
     public void updateRentalAgreement(RentalAgreement agreement) {
-        if (!rentalAgreements.containsKey(agreement.getAgreementId())) {
+        RentalAgreement existingAgreement = rentalAgreements.get(agreement.getAgreementId());
+        if (existingAgreement == null) {
             throw new IllegalArgumentException("Rental agreement with ID " + agreement.getAgreementId() + " does not exist.");
         }
+
+        existingAgreement.getProperty().removeTenant(existingAgreement.getMainTenant());
+        existingAgreement.getMainTenant().removeRentalAgreement(existingAgreement);
+        existingAgreement.getHost().removeManagedAgreement(existingAgreement);
+        existingAgreement.getOwner().removeRentalAgreement(existingAgreement);
+
+        for (Tenant subTenant : existingAgreement.getSubTenants()) {
+            existingAgreement.getProperty().removeTenant(subTenant);
+            subTenant.removeRentalAgreement(existingAgreement);
+        }
+        updateAgreementStatus(agreement);
+
+        agreement.getProperty().addTenant(agreement.getMainTenant());
+        agreement.getMainTenant().addRentalAgreement(agreement);
+        agreement.getHost().addManagedAgreement(agreement);
+        agreement.getOwner().addRentalAgreement(agreement);
+
+        for (Tenant subTenant : agreement.getSubTenants()) {
+            agreement.getProperty().addTenant(subTenant);
+            subTenant.addRentalAgreement(agreement);
+        }
+
         rentalAgreements.put(agreement.getAgreementId(), agreement);
         saveRentalAgreements();
     }
 
     @Override
     public void deleteRentalAgreement(String agreementId) {
-        if (!rentalAgreements.containsKey(agreementId)) {
+        RentalAgreement agreement = rentalAgreements.remove(agreementId);
+        if (agreement == null) {
             throw new IllegalArgumentException("Rental agreement with ID " + agreementId + " does not exist.");
         }
-        rentalAgreements.remove(agreementId);
+
+        agreement.getProperty().removeTenant(agreement.getMainTenant());
+        agreement.getMainTenant().removeRentalAgreement(agreement);
+        agreement.getHost().removeManagedAgreement(agreement);
+        agreement.getOwner().removeRentalAgreement(agreement);
+
+        for (Tenant subTenant : agreement.getSubTenants()) {
+            agreement.getProperty().removeTenant(subTenant);
+            subTenant.removeRentalAgreement(agreement);
+        }
+
         saveRentalAgreements();
     }
 
@@ -92,14 +157,29 @@ public class RentalManagerImpl implements RentalManager {
             case "id":
                 sortedList.sort(Comparator.comparing(RentalAgreement::getAgreementId));
                 break;
+            case "propertyid":
+                sortedList.sort(Comparator.comparing(a -> a.getProperty().getPropertyId()));
+                break;
+            case "tenantname":
+                sortedList.sort(Comparator.comparing(a -> a.getMainTenant().getFullName()));
+                break;
+            case "ownername":
+                sortedList.sort(Comparator.comparing(a -> a.getOwner().getFullName()));
+                break;
+            case "hostname":
+                sortedList.sort(Comparator.comparing(a -> a.getHost().getFullName()));
+                break;
             case "startdate":
                 sortedList.sort(Comparator.comparing(RentalAgreement::getStartDate));
                 break;
             case "enddate":
                 sortedList.sort(Comparator.comparing(RentalAgreement::getEndDate));
                 break;
-            case "rent":
+            case "rentamount":
                 sortedList.sort(Comparator.comparing(RentalAgreement::getRentAmount));
+                break;
+            case "status":
+                sortedList.sort(Comparator.comparing(RentalAgreement::getStatus));
                 break;
             default:
                 throw new IllegalArgumentException("Invalid sort criteria: " + sortBy);
@@ -121,14 +201,25 @@ public class RentalManagerImpl implements RentalManager {
     public void addSubTenant(String agreementId, String subTenantId) {
         RentalAgreement agreement = getRentalAgreement(agreementId);
         Tenant subTenant = tenantManager.getTenant(subTenantId);
+        if (subTenant == null) {
+            throw new IllegalArgumentException("Tenant with ID " + subTenantId + " does not exist.");
+        }
         agreement.addSubTenant(subTenant);
+        agreement.getProperty().addTenant(subTenant);
+        subTenant.addRentalAgreement(agreement);
         saveRentalAgreements();
     }
 
     @Override
     public void removeSubTenant(String agreementId, String subTenantId) {
         RentalAgreement agreement = getRentalAgreement(agreementId);
+        Tenant subTenant = tenantManager.getTenant(subTenantId);
+        if (subTenant == null) {
+            throw new IllegalArgumentException("Tenant with ID " + subTenantId + " does not exist.");
+        }
         agreement.removeSubTenant(subTenantId);
+        agreement.getProperty().removeTenant(subTenant);
+        subTenant.removeRentalAgreement(agreement);
         saveRentalAgreements();
     }
 
@@ -136,7 +227,7 @@ public class RentalManagerImpl implements RentalManager {
     public List<RentalAgreement> getActiveRentalAgreements() {
         Date currentDate = new Date();
         return rentalAgreements.values().stream()
-                .filter(agreement -> agreement.getEndDate().after(currentDate))
+                .filter(agreement -> agreement.getEndDate().after(currentDate) && agreement.getStatus() == RentalAgreement.Status.ACTIVE)
                 .collect(Collectors.toList());
     }
 
@@ -144,13 +235,14 @@ public class RentalManagerImpl implements RentalManager {
     public List<RentalAgreement> getExpiredRentalAgreements() {
         Date currentDate = new Date();
         return rentalAgreements.values().stream()
-                .filter(agreement -> agreement.getEndDate().before(currentDate))
+                .filter(agreement -> agreement.getEndDate().before(currentDate) || agreement.getStatus() == RentalAgreement.Status.COMPLETED)
                 .collect(Collectors.toList());
     }
 
     @Override
     public double getTotalRentalIncome() {
         return rentalAgreements.values().stream()
+                .filter(agreement -> agreement.getStatus() == RentalAgreement.Status.ACTIVE)
                 .mapToDouble(RentalAgreement::getRentAmount)
                 .sum();
     }
@@ -166,7 +258,9 @@ public class RentalManagerImpl implements RentalManager {
         return rentalAgreements.values().stream()
                 .filter(agreement -> agreement.getAgreementId().toLowerCase().contains(lowercaseKeyword) ||
                         agreement.getProperty().getAddress().toLowerCase().contains(lowercaseKeyword) ||
-                        agreement.getMainTenant().getFullName().toLowerCase().contains(lowercaseKeyword))
+                        agreement.getMainTenant().getFullName().toLowerCase().contains(lowercaseKeyword) ||
+                        agreement.getOwner().getFullName().toLowerCase().contains(lowercaseKeyword) ||
+                        agreement.getHost().getFullName().toLowerCase().contains(lowercaseKeyword))
                 .collect(Collectors.toList());
     }
 
@@ -185,6 +279,12 @@ public class RentalManagerImpl implements RentalManager {
         RentalAgreement agreement = getRentalAgreement(agreementId);
         agreement.setEndDate(new Date());
         agreement.setStatus(RentalAgreement.Status.COMPLETED);
+
+        agreement.getProperty().removeTenant(agreement.getMainTenant());
+        for (Tenant subTenant : agreement.getSubTenants()) {
+            agreement.getProperty().removeTenant(subTenant);
+        }
+
         saveRentalAgreements();
     }
 
