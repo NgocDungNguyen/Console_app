@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.Comparator;
+
 
 import com.rentalsystem.model.Host;
 import com.rentalsystem.util.FileHandler;
@@ -76,6 +78,28 @@ public class HostManagerImpl implements HostManager {
     @Override
     public List<Host> getAllHosts() {
         return new ArrayList<>(hosts.values());
+    }
+
+    @Override
+    public List<Host> getSorted(String sortBy) {
+        List<Host> sortedList = new ArrayList<>(hosts.values());
+        switch (sortBy.toLowerCase()) {
+            case "id":
+                sortedList.sort(Comparator.comparing(Host::getId));
+                break;
+            case "name":
+                sortedList.sort(Comparator.comparing(Host::getFullName));
+                break;
+            case "dob":
+                sortedList.sort(Comparator.comparing(Host::getDateOfBirth));
+                break;
+            case "email":
+                sortedList.sort(Comparator.comparing(Host::getContactInformation));
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid sort criteria: " + sortBy);
+        }
+        return sortedList;
     }
 
     @Override
