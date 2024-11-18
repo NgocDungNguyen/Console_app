@@ -5,6 +5,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.Comparator;
+
 
 import com.rentalsystem.model.Tenant;
 import com.rentalsystem.model.RentalAgreement;
@@ -90,6 +92,28 @@ public class TenantManagerImpl implements TenantManager {
     @Override
     public List<Tenant> getAllTenants() {
         return new ArrayList<>(tenants.values());
+    }
+
+    @Override
+    public List<Tenant> getSorted(String sortBy) {
+        List<Tenant> sortedList = new ArrayList<>(tenants.values());
+        switch (sortBy.toLowerCase()) {
+            case "id":
+                sortedList.sort(Comparator.comparing(Tenant::getId));
+                break;
+            case "name":
+                sortedList.sort(Comparator.comparing(Tenant::getFullName));
+                break;
+            case "dob":
+                sortedList.sort(Comparator.comparing(Tenant::getDateOfBirth));
+                break;
+            case "email":
+                sortedList.sort(Comparator.comparing(Tenant::getContactInformation));
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid sort criteria: " + sortBy);
+        }
+        return sortedList;
     }
 
     @Override
