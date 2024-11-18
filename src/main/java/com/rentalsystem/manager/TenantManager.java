@@ -14,4 +14,5 @@ public interface TenantManager {
     boolean isEmailTaken(String email);
     Tenant getTenantByEmail(String email);
     boolean updateTenant(Tenant tenant, String newEmail);
+    List<Tenant> getSorted(String sortBy);
 }
