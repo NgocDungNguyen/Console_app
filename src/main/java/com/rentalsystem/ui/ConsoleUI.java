@@ -9,6 +9,10 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.text.SimpleDateFormat;
+import com.rentalsystem.model.Payment;
+import com.rentalsystem.util.FileHandler;
+
 
 import org.jline.reader.Completer;
 import org.jline.reader.LineReader;
@@ -36,7 +40,6 @@ import com.rentalsystem.model.RentalAgreement;
 import com.rentalsystem.model.ResidentialProperty;
 import com.rentalsystem.model.Tenant;
 import com.rentalsystem.util.DateUtil;
-import com.rentalsystem.util.FileHandler;
 import com.rentalsystem.util.InputValidator;
 
 public class ConsoleUI {
@@ -47,6 +50,7 @@ public class ConsoleUI {
     private PropertyManager propertyManager;
     private final LineReader reader;
     private final Terminal terminal;
+    private final FileHandler fileHandler;
     private final TableFormatter tableFormatter;
 
     public static final String ANSI_GREEN = "\u001B[32m";
@@ -110,18 +114,18 @@ public class ConsoleUI {
                 .build();
 
         tableFormatter = new TableFormatter(terminal);
+        fileHandler = new FileHandler();  // Initialize fileHandler here
     }
 
-    private void initializeManagers() {
-        System.out.print("Initializing system...");
-        FileHandler fileHandler = new FileHandler();
-        this.hostManager = new HostManagerImpl(fileHandler);
-        this.tenantManager = new TenantManagerImpl(fileHandler);
-        this.ownerManager = new OwnerManagerImpl(fileHandler);
-        this.propertyManager = new PropertyManagerImpl(fileHandler, hostManager, tenantManager, ownerManager);
-        this.rentalManager = new RentalManagerImpl(fileHandler, tenantManager, propertyManager, hostManager, ownerManager);
-        System.out.println(" Done!");
-    }
+private void initializeManagers() {
+    System.out.print("Initializing system...");
+    this.hostManager = new HostManagerImpl(fileHandler);
+    this.tenantManager = new TenantManagerImpl(fileHandler);
+    this.ownerManager = new OwnerManagerImpl(fileHandler);
+    this.propertyManager = new PropertyManagerImpl(fileHandler, hostManager, tenantManager, ownerManager);
+    this.rentalManager = new RentalManagerImpl(fileHandler, tenantManager, propertyManager, hostManager, ownerManager);
+    System.out.println(" Done!");
+}
 
     public void start() {
         clearScreen();
@@ -389,7 +393,9 @@ public class ConsoleUI {
         while (true) {
             clearScreen();
             List<String> options = Arrays.asList(
-                    "Income Report", "Occupancy Report", "Tenant Report", "Back to Main Menu"
+                    "Income Report", "Occupancy Report", "Tenant Report",
+                    "Property Status Report", "Tenant Payment History", "Host Performance Report",
+                    "Back to Main Menu"
             );
             tableFormatter.printTable("REPORTS", options, TableFormatter.ANSI_RED);
             String choice = readUserInput("Enter your choice: ");
@@ -405,6 +411,15 @@ public class ConsoleUI {
                     generateTenantReport();
                     break;
                 case "4":
+                    generatePropertyStatusReport();
+                    break;
+                case "5":
+                    generateTenantPaymentHistoryReport();
+                    break;
+                case "6":
+                    generateHostPerformanceReport();
+                    break;
+                case "7":
                     return;
                 default:
                     System.out.println("Invalid choice. Please try again.");
@@ -413,16 +428,77 @@ public class ConsoleUI {
         }
     }
 
+    private void generatePropertyStatusReport() {
+        List<Property> properties = propertyManager.getAllProperties();
+        List<String> headers = Arrays.asList("Property ID", "Type", "Address", "Status", "Owner", "Host");
+        List<List<String>> data = new ArrayList<>();
+        for (Property property : properties) {
+            data.add(Arrays.asList(
+                    property.getPropertyId(),
+                    property instanceof ResidentialProperty ? "Residential" : "Commercial",
+                    property.getAddress(),
+                    property.getStatus().toString(),
+                    property.getOwner().getFullName(),
+                    property.getHost() != null ? property.getHost().getFullName() : "N/A"
+            ));
+        }
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+    }
+
+    private void generateTenantPaymentHistoryReport() {
+        String tenantId = readUserInput("Enter tenant ID: ");
+        Tenant tenant = tenantManager.getTenant(tenantId);
+        if (tenant == null) {
+            System.out.println("Tenant not found.");
+            return;
+        }
+        List<Payment> payments = getPaymentsForTenant(tenant);
+        if (payments.isEmpty()) {
+            System.out.println("No payment history found for this tenant.");
+            return;
+        }
+        List<String> headers = Arrays.asList("Payment ID", "Date", "Amount", "Method", "Agreement ID");
+        List<List<String>> data = new ArrayList<>();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        for (Payment payment : payments) {
+            data.add(Arrays.asList(
+                    payment.getPaymentId(),
+                    dateFormat.format(payment.getPaymentDate()),
+                    String.format("%.2f", payment.getAmount()),
+                    payment.getPaymentMethod(),
+                    payment.getRentalAgreement().getAgreementId()
+            ));
+        }
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+    }
+
     private String readUserInput(String prompt) {
-        String input = "";
-        do {
-            System.out.print(prompt);
-            input = reader.readLine().trim();
-            if (input.isEmpty()) {
-                System.out.println("Input cannot be empty. Please try again.");
-            }
-        } while (input.isEmpty());
-        return input;
+        System.out.print(prompt);
+        return reader.readLine().trim();
+    }
+
+    private void generateHostPerformanceReport() {
+        List<Host> hosts = hostManager.getAllHosts();
+        List<String> headers = Arrays.asList("Host ID", "Name", "Managed Properties", "Active Agreements", "Total Rent");
+        List<List<String>> data = new ArrayList<>();
+        for (Host host : hosts) {
+            int managedProperties = host.getManagedProperties().size();
+            List<RentalAgreement> activeAgreements = host.getManagedAgreements().stream()
+                    .filter(a -> a.getStatus() == RentalAgreement.Status.ACTIVE)
+                    .collect(Collectors.toList());
+            int activeAgreementsCount = activeAgreements.size();
+            double totalRent = activeAgreements.stream()
+                    .mapToDouble(RentalAgreement::getRentAmount)
+                    .sum();
+            data.add(Arrays.asList(
+                    host.getId(),
+                    host.getFullName(),
+                    String.valueOf(managedProperties),
+                    String.valueOf(activeAgreementsCount),
+                    String.format("%.2f", totalRent)
+            ));
+        }
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
     }
 
     private String readUserInputAllowEmpty(String prompt) {
@@ -595,26 +671,12 @@ public class ConsoleUI {
     }
 
     private void listRentalAgreements() {
-        List<RentalAgreement> agreements = rentalManager.getAllRentalAgreements();
-        if (agreements.isEmpty()) {
-            System.out.println(TableFormatter.ANSI_YELLOW + "No rental agreements found." + TableFormatter.ANSI_RESET);
-        } else {
-            List<String> headers = Arrays.asList("ID", "Property", "Tenant", "Owner", "Host", "Start Date", "End Date", "Rent Amount", "Status");
-            List<List<String>> data = new ArrayList<>();
-            for (RentalAgreement agreement : agreements) {
-                data.add(Arrays.asList(
-                        agreement.getAgreementId(),
-                        agreement.getProperty().getPropertyId(),
-                        agreement.getMainTenant().getFullName(),
-                        agreement.getOwner().getFullName(),
-                        agreement.getHost().getFullName(),
-                        agreement.getStartDate().toString(),
-                        agreement.getEndDate().toString(),
-                        String.format("%.2f", agreement.getRentAmount()),
-                        agreement.getStatus().toString()
-                ));
-            }
-            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+        String sortBy = readUserInput("Enter sort criteria (id/propertyid/tenantname/ownername/hostname/startdate/enddate/rentamount/status): ");
+        try {
+            List<RentalAgreement> agreements = rentalManager.getSortedRentalAgreements(sortBy);
+            displayRentalAgreements(agreements);
+        } catch (IllegalArgumentException e) {
+            System.out.println(TableFormatter.ANSI_RED + e.getMessage() + TableFormatter.ANSI_RESET);
         }
     }
 
@@ -779,21 +841,12 @@ public class ConsoleUI {
     }
 
     private void listTenants() {
-        List<Tenant> tenants = tenantManager.getAllTenants();
-        if (tenants.isEmpty()) {
-            System.out.println(TableFormatter.ANSI_YELLOW + "No tenants found." + TableFormatter.ANSI_RESET);
-        } else {
-            List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
-            List<List<String>> data = new ArrayList<>();
-            for (Tenant tenant : tenants) {
-                data.add(Arrays.asList(
-                        tenant.getId(),
-                        tenant.getFullName(),
-                        tenant.getDateOfBirth().toString(),
-                        tenant.getContactInformation()
-                ));
-            }
-            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+        String sortBy = readUserInput("Enter sort criteria (id/name/dob/email): ");
+        try {
+            List<Tenant> tenants = tenantManager.getSorted(sortBy);
+            displayTenants(tenants);
+        } catch (IllegalArgumentException e) {
+            System.out.println(TableFormatter.ANSI_RED + e.getMessage() + TableFormatter.ANSI_RESET);
         }
     }
 
@@ -966,21 +1019,12 @@ public class ConsoleUI {
     }
 
     private void listOwners() {
-        List<Owner> owners = ownerManager.getAllOwners();
-        if (owners.isEmpty()) {
-            System.out.println(TableFormatter.ANSI_YELLOW + "No owners found." + TableFormatter.ANSI_RESET);
-        } else {
-            List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info");
-            List<List<String>> data = new ArrayList<>();
-            for (Owner owner : owners) {
-                data.add(Arrays.asList(
-                        owner.getId(),
-                        owner.getFullName(),
-                        owner.getDateOfBirth().toString(),
-                        owner.getContactInformation()
-                ));
-            }
-            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+        String sortBy = readUserInput("Enter sort criteria (id/name/dob/email): ");
+        try {
+            List<Owner> owners = ownerManager.getSorted(sortBy);
+            displayOwners(owners);
+        } catch (IllegalArgumentException e) {
+            System.out.println(TableFormatter.ANSI_RED + e.getMessage() + TableFormatter.ANSI_RESET);
         }
     }
 
@@ -1153,24 +1197,12 @@ public class ConsoleUI {
     }
 
     private void listHosts() {
-        List<Host> hosts = hostManager.getAllHosts();
-        if (hosts.isEmpty()) {
-            System.out.println(TableFormatter.ANSI_YELLOW + "No hosts found." + TableFormatter.ANSI_RESET);
-        } else {
-            List<String> headers = Arrays.asList("ID", "Name", "Date of Birth", "Contact Info", "Managed Properties");
-            List<List<String>> data = new ArrayList<>();
-            for (Host host : hosts) {
-                data.add(Arrays.asList(
-                        host.getId(),
-                        host.getFullName(),
-                        host.getDateOfBirth().toString(),
-                        host.getContactInformation(),
-                        host.getManagedProperties().stream()
-                                .map(Property::getPropertyId)
-                                .collect(Collectors.joining(", "))
-                ));
-            }
-            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+        String sortBy = readUserInput("Enter sort criteria (id/name/dob/email): ");
+        try {
+            List<Host> hosts = hostManager.getSorted(sortBy);
+            displayHosts(hosts);
+        } catch (IllegalArgumentException e) {
+            System.out.println(TableFormatter.ANSI_RED + e.getMessage() + TableFormatter.ANSI_RESET);
         }
     }
 
@@ -1393,26 +1425,12 @@ public class ConsoleUI {
     }
 
     private void listProperties() {
-        List<Property> properties = propertyManager.getAllProperties();
-        System.out.println("Retrieved " + properties.size() + " properties from PropertyManager");
-        if (properties.isEmpty()) {
-            System.out.println(TableFormatter.ANSI_YELLOW + "No properties found." + TableFormatter.ANSI_RESET);
-        } else {
-            List<String> headers = Arrays.asList("ID", "Type", "Address", "Price", "Status", "Owner", "Host", "Current Tenant");
-            List<List<String>> data = new ArrayList<>();
-            for (Property property : properties) {
-                data.add(Arrays.asList(
-                        property.getPropertyId(),
-                        property instanceof ResidentialProperty ? "Residential" : "Commercial",
-                        property.getAddress(),
-                        String.format("%.2f", property.getPrice()),
-                        property.getStatus().toString(),
-                        property.getOwner().getId() + " - " + property.getOwner().getFullName(),
-                        property.getHost() != null ? property.getHost().getId() + " - " + property.getHost().getFullName() : "N/A",
-                        property.getCurrentTenant() != null ? property.getCurrentTenant().getId() + " - " + property.getCurrentTenant().getFullName() : "N/A"
-                ));
-            }
-            tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+        String sortBy = readUserInput("Enter sort criteria (id/type/address/price/status/owner): ");
+        try {
+            List<Property> properties = propertyManager.getSorted(sortBy);
+            displayProperties(properties);
+        } catch (IllegalArgumentException e) {
+            System.out.println(TableFormatter.ANSI_RED + e.getMessage() + TableFormatter.ANSI_RESET);
         }
     }
 
@@ -1520,6 +1538,158 @@ public class ConsoleUI {
         ));
         tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
     }
+
+    private void displayRentalAgreements(List<RentalAgreement> agreements) {
+        List<String> headers = Arrays.asList(
+                "Agreement ID", "Property ID", "Tenant", "Owner", "Host",
+                "Start Date", "End Date", "Rent Amount", "Status"
+        );
+        List<List<String>> data = new ArrayList<>();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        for (RentalAgreement agreement : agreements) {
+            String tenantInfo = agreement.getMainTenant().getId() + " - " + agreement.getMainTenant().getFullName();
+            for (Tenant subTenant : agreement.getSubTenants()) {
+                tenantInfo += " / " + subTenant.getId() + " - " + subTenant.getFullName();
+            }
+            data.add(Arrays.asList(
+                    agreement.getAgreementId(),
+                    agreement.getProperty().getPropertyId(),
+                    tenantInfo,
+                    agreement.getOwner().getId() + " - " + agreement.getOwner().getFullName(),
+                    agreement.getHost().getId() + " - " + agreement.getHost().getFullName(),
+                    dateFormat.format(agreement.getStartDate()),
+                    dateFormat.format(agreement.getEndDate()),
+                    String.format("%.2f", agreement.getRentAmount()),
+                    agreement.getStatus().toString()
+            ));
+        }
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+    }
+
+    private void displayTenants(List<Tenant> tenants) {
+        List<String> headers = Arrays.asList(
+                "Tenant ID", "Name", "DOB", "Email", "Rented Property",
+                "Rental Contract ID", "Payment Amount", "Payment Date", "Payment Method"
+        );
+        List<List<String>> data = new ArrayList<>();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        for (Tenant tenant : tenants) {
+            String rentedProperty = "";
+            String rentalContractId = "";
+            String paymentAmount = "";
+            String paymentDate = "";
+            String paymentMethod = "";
+            if (!tenant.getRentalAgreements().isEmpty()) {
+                RentalAgreement agreement = tenant.getRentalAgreements().get(0);
+                rentedProperty = agreement.getProperty().getPropertyId();
+                rentalContractId = agreement.getAgreementId();
+                List<Payment> payments = getPaymentsForTenant(tenant);
+                if (!payments.isEmpty()) {
+                    Payment lastPayment = payments.get(payments.size() - 1);
+                    paymentAmount = String.format("%.2f", lastPayment.getAmount());
+                    paymentDate = dateFormat.format(lastPayment.getPaymentDate());
+                    paymentMethod = lastPayment.getPaymentMethod();
+                }
+            }
+            data.add(Arrays.asList(
+                    tenant.getId(),
+                    tenant.getFullName(),
+                    dateFormat.format(tenant.getDateOfBirth()),
+                    tenant.getContactInformation(),
+                    rentedProperty,
+                    rentalContractId,
+                    paymentAmount,
+                    paymentDate,
+                    paymentMethod
+            ));
+        }
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+    }
+
+    private List<Payment> getPaymentsForTenant(Tenant tenant) {
+        return fileHandler.loadPayments().stream()
+                .filter(p -> p.getTenant().getId().equals(tenant.getId()))
+                .collect(Collectors.toList());
+    }
+
+
+    private void displayOwners(List<Owner> owners) {
+        List<String> headers = Arrays.asList(
+                "Owner ID", "Name", "DOB", "Email", "Owned Properties", "Managing Hosts"
+        );
+        List<List<String>> data = new ArrayList<>();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        for (Owner owner : owners) {
+            String ownedProperties = owner.getOwnedProperties().stream()
+                    .map(Property::getPropertyId)
+                    .collect(Collectors.joining(", "));
+            String managingHosts = propertyManager.getAllProperties().stream()
+                    .filter(p -> p.getOwner().getId().equals(owner.getId()) && p.getHost() != null)
+                    .map(p -> p.getHost().getId() + " - " + p.getHost().getFullName())
+                    .distinct()
+                    .collect(Collectors.joining(", "));
+            data.add(Arrays.asList(
+                    owner.getId(),
+                    owner.getFullName(),
+                    dateFormat.format(owner.getDateOfBirth()),
+                    owner.getContactInformation(),
+                    ownedProperties,
+                    managingHosts
+            ));
+        }
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+    }
+
+    private void displayHosts(List<Host> hosts) {
+        List<String> headers = Arrays.asList(
+                "Host ID", "Name", "DOB", "Email", "Managed Properties", "Property Owners"
+        );
+        List<List<String>> data = new ArrayList<>();
+        SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+        for (Host host : hosts) {
+            String managedProperties = host.getManagedProperties().stream()
+                    .map(Property::getPropertyId)
+                    .collect(Collectors.joining(", "));
+            String propertyOwners = propertyManager.getAllProperties().stream()
+                    .filter(p -> p.getHost() != null && p.getHost().getId().equals(host.getId()))
+                    .map(p -> p.getOwner().getId() + " - " + p.getOwner().getFullName())
+                    .distinct()
+                    .collect(Collectors.joining(", "));
+            data.add(Arrays.asList(
+                    host.getId(),
+                    host.getFullName(),
+                    dateFormat.format(host.getDateOfBirth()),
+                    host.getContactInformation(),
+                    managedProperties,
+                    propertyOwners
+            ));
+        }
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+    }
+
+    private void displayProperties(List<Property> properties) {
+        List<String> headers = Arrays.asList(
+                "Property ID", "Type", "Address", "Price", "Status", "Owner", "Host", "Tenants"
+        );
+        List<List<String>> data = new ArrayList<>();
+        for (Property property : properties) {
+            String tenantInfo = property.getTenants().stream()
+                    .map(t -> t.getId() + " - " + t.getFullName())
+                    .collect(Collectors.joining(", "));
+            data.add(Arrays.asList(
+                    property.getPropertyId(),
+                    property instanceof ResidentialProperty ? "Residential" : "Commercial",
+                    property.getAddress(),
+                    String.format("%.2f", property.getPrice()),
+                    property.getStatus().toString(),
+                    property.getOwner().getId() + " - " + property.getOwner().getFullName(),
+                    property.getHost() != null ? property.getHost().getId() + " - " + property.getHost().getFullName() : "N/A",
+                    tenantInfo
+            ));
+        }
+        tableFormatter.printDataTable(headers, data, TableFormatter.ANSI_CYAN);
+    }
+
 
     public static void main(String[] args) {
         try {
