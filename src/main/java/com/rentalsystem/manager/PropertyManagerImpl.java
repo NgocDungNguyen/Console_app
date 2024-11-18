@@ -30,7 +30,6 @@ public class PropertyManagerImpl implements PropertyManager {
                 Host host = hostManager.getHost(property.getHost().getId());
                 if (host != null) {
                     property.setHost(host);
-                    host.addManagedProperty(property);
                 }
             }
 
@@ -38,7 +37,6 @@ public class PropertyManagerImpl implements PropertyManager {
                 Owner owner = ownerManager.getOwner(property.getOwner().getId());
                 if (owner != null) {
                     property.setOwner(owner);
-                    owner.addOwnedProperty(property);
                 }
             }
 
@@ -47,8 +45,7 @@ public class PropertyManagerImpl implements PropertyManager {
                 if (agreement != null) {
                     Tenant tenant = tenantManager.getTenant(agreement.getMainTenant().getId());
                     if (tenant != null) {
-                        property.setCurrentTenant(tenant);
-                        tenant.addRentedProperty(property);
+                        property.addTenant(tenant);
                     }
                 }
             }
@@ -74,12 +71,13 @@ public class PropertyManagerImpl implements PropertyManager {
 
     @Override
     public void updateProperty(Property property) {
-        if (!properties.containsKey(property.getPropertyId())) {
-            throw new IllegalArgumentException("Property with ID " + property.getPropertyId() + " does not exist.");
+        if (!property.getTenants().isEmpty()) {
+            property.setStatus(Property.PropertyStatus.RENTED);
+        } else if (property.getStatus() != Property.PropertyStatus.UNDER_MAINTENANCE) {
+            property.setStatus(Property.PropertyStatus.AVAILABLE);
         }
         properties.put(property.getPropertyId(), property);
         saveProperties();
-        System.out.println("Updated property: " + property.getPropertyId());
     }
 
     @Override
@@ -91,14 +89,13 @@ public class PropertyManagerImpl implements PropertyManager {
         if (property.getHost() != null) {
             property.getHost().removeManagedProperty(property);
         }
-        if (property.getCurrentTenant() != null) {
-            property.getCurrentTenant().removeRentedProperty(property);
+        for (Tenant tenant : property.getTenants()) {
+            tenant.removeRentedProperty(property);
         }
         if (property.getOwner() != null) {
             property.getOwner().removeOwnedProperty(property);
         }
         saveProperties();
-        System.out.println("Deleted property: " + propertyId);
     }
 
     @Override
@@ -112,8 +109,35 @@ public class PropertyManagerImpl implements PropertyManager {
 
     @Override
     public List<Property> getAllProperties() {
-        System.out.println("Returning " + properties.size() + " properties");
         return new ArrayList<>(properties.values());
+    }
+
+    @Override
+    public List<Property> getSorted(String sortBy) {
+        List<Property> sortedList = new ArrayList<>(properties.values());
+        switch (sortBy.toLowerCase()) {
+            case "id":
+                sortedList.sort(Comparator.comparing(Property::getPropertyId));
+                break;
+            case "type":
+                sortedList.sort(Comparator.comparing(p -> p instanceof ResidentialProperty ? "Residential" : "Commercial"));
+                break;
+            case "address":
+                sortedList.sort(Comparator.comparing(Property::getAddress));
+                break;
+            case "price":
+                sortedList.sort(Comparator.comparing(Property::getPrice));
+                break;
+            case "status":
+                sortedList.sort(Comparator.comparing(Property::getStatus));
+                break;
+            case "owner":
+                sortedList.sort(Comparator.comparing(p -> p.getOwner().getFullName()));
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid sort criteria: " + sortBy);
+        }
+        return sortedList;
     }
 
     @Override
@@ -147,6 +171,5 @@ public class PropertyManagerImpl implements PropertyManager {
 
     private void saveProperties() {
         fileHandler.saveProperties(new ArrayList<>(properties.values()));
-        System.out.println("Saved " + properties.size() + " properties");
     }
 }
