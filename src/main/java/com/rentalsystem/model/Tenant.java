@@ -9,10 +9,13 @@ public class Tenant extends Person {
     private List<RentalAgreement> rentalAgreements;
     private List<Payment> paymentTransactions;
     private List<Property> rentedProperties;
+    private List<Payment> payments;
+
 
     public Tenant(String id, String fullName, Date dateOfBirth, String contactInformation) {
         super(id, fullName, dateOfBirth, contactInformation);
         this.rentalAgreements = new ArrayList<>();
+        this.payments = new ArrayList<>();
         this.paymentTransactions = new ArrayList<>();
         this.rentedProperties = new ArrayList<>();
     }
@@ -33,6 +36,14 @@ public class Tenant extends Person {
 
     public List<Payment> getPaymentTransactions() {
         return new ArrayList<>(paymentTransactions);
+    }
+
+    public void addPayment(Payment payment) {
+        payments.add(payment);
+    }
+
+    public List<Payment> getPayments() {
+        return new ArrayList<>(payments);
     }
 
     public void addPaymentTransaction(Payment payment) {
