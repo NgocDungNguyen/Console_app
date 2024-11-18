@@ -1,42 +1,70 @@
 package com.rentalsystem.model;
 
 import java.util.Date;
-import java.util.Objects;
 
 public class Payment {
     private String paymentId;
-    private double amount;
-    private Date paymentDate;
-    private String paymentMethod;
     private RentalAgreement rentalAgreement;
     private Tenant tenant;
+    private Date paymentDate;
+    private double amount;
+    private String paymentMethod;
 
-    public Payment(String paymentId, double amount, Date paymentDate, String paymentMethod, RentalAgreement rentalAgreement, Tenant tenant) {
+    public Payment(String paymentId, RentalAgreement rentalAgreement, Tenant tenant, Date paymentDate, double amount, String paymentMethod) {
         this.paymentId = paymentId;
-        this.amount = amount;
-        this.paymentDate = paymentDate;
-        this.paymentMethod = paymentMethod;
         this.rentalAgreement = rentalAgreement;
         this.tenant = tenant;
-
-        // Update related entities
-        rentalAgreement.addPayment(this);
-        tenant.addPaymentTransaction(this);
+        this.paymentDate = paymentDate;
+        this.amount = amount;
+        this.paymentMethod = paymentMethod;
     }
 
-    // Getters and setters for all fields
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
-        Payment payment = (Payment) o;
-        return Objects.equals(paymentId, payment.paymentId);
+    public String getPaymentId() {
+        return paymentId;
     }
 
-    @Override
-    public int hashCode() {
-        return Objects.hash(paymentId);
+    public void setPaymentId(String paymentId) {
+        this.paymentId = paymentId;
+    }
+
+    public double getAmount() {
+        return amount;
+    }
+
+    public void setAmount(double amount) {
+        this.amount = amount;
+    }
+
+    public Date getPaymentDate() {
+        return paymentDate;
+    }
+
+    public void setPaymentDate(Date paymentDate) {
+        this.paymentDate = paymentDate;
+    }
+
+    public String getPaymentMethod() {
+        return paymentMethod;
+    }
+
+    public void setPaymentMethod(String paymentMethod) {
+        this.paymentMethod = paymentMethod;
+    }
+
+    public RentalAgreement getRentalAgreement() {
+        return rentalAgreement;
+    }
+
+    public void setRentalAgreement(RentalAgreement rentalAgreement) {
+        this.rentalAgreement = rentalAgreement;
+    }
+
+    public Tenant getTenant() {
+        return tenant;
+    }
+
+    public void setTenant(Tenant tenant) {
+        this.tenant = tenant;
     }
 
     @Override
@@ -47,7 +75,7 @@ public class Payment {
                 ", paymentDate=" + paymentDate +
                 ", paymentMethod='" + paymentMethod + '\'' +
                 ", rentalAgreement=" + rentalAgreement.getAgreementId() +
-                ", tenant=" + tenant.getFullName() +
+                ", tenant=" + tenant.getId() +
                 '}';
     }
 }
